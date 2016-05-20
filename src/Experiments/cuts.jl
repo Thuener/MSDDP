@@ -1,5 +1,4 @@
-push!(LOAD_PATH, "../")
-using H2SDDP
+using MSDDP
 using Distributions
 using Base.Test
 using Logging
@@ -27,7 +26,7 @@ function piecewise(w::Float64,B::Array{Float64,2},A::Array{Float64,1})
   return f2
 end
 
-function evafunc(dH::H2SDDPData, dM::HMMData, α, β, t, k )
+function evafunc(dH::MSDDPData, dM::HMMData, α, β, t, k )
   n_cuts = size(α,1)
   a = Array(Float64,n_cuts)
   b = Array(Float64,dH.N+1,n_cuts)
@@ -61,7 +60,7 @@ GAPP = 1 # GAP mínimo em porcentagem
 Max_It = 100
 α_lB = 0.9
 
-dH  = H2SDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
 file = "../C++/output/ken_1DInd_90a14"
 

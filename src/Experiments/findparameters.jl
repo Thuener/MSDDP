@@ -1,5 +1,4 @@
-push!(LOAD_PATH, "../")
-using H2SDDP
+using MSDDP
 using Distributions
 using HypothesisTests
 using Logging
@@ -52,7 +51,7 @@ function generateseriesMS(T::Int64,N::Int64,S::Int64,T_l::Int64)
   #p2 = reshape(p[:],N+1,120,1000)
 end
 
-function sampleslhs(dH::H2SDDPData, file_name::String, file_dir::String)
+function sampleslhs(dH::MSDDPData, file_name::String, file_dir::String)
   dH.K = 3
   last_std = 10000.0
   last_mean = 10000.0
@@ -92,7 +91,7 @@ function sampleslhs(dH::H2SDDPData, file_name::String, file_dir::String)
 end
 
 # Choose the number of sates for the HMM
-function beststate(dH::H2SDDPData, file_name::String, file_dir::String)
+function beststate(dH::MSDDPData, file_name::String, file_dir::String)
   last_ret = 0
   last_all = 0
   max_state = 7
@@ -202,7 +201,7 @@ file_name = "$(N)MS_120_$(Se)"
 c = cs[2]
 γ = γs[2]
 
-dH  = H2SDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 file_dir = "../C++/MS/output/"
 #sampleslhs(dH, file_name, file_dir)
 
@@ -216,7 +215,7 @@ for i_γ = 1:length(γs)
     c = cs[i_c]
     info("Start testes with γ = $(γ) and c = $(c)")
 
-    dH  = H2SDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+    dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
     file_dir = "../C++/MS/output/"
 
     dH.S = 500

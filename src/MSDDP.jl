@@ -1,5 +1,5 @@
-module H2SDDP
-export HMMData, H2SDDPData
+module MSDDP
+export HMMData, MSDDPData
 export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
 
 
@@ -32,7 +32,7 @@ type HMMData
   P_K::Array{Float64,2}
 end
 
-type H2SDDPData
+type MSDDPData
   N::Int64
   T::Int64
   K::Int64
@@ -56,7 +56,7 @@ type SubProbData
   risco::Int64
 end
 
-function readHMMPara(file, dH::H2SDDPData)
+function readHMMPara(file, dH::MSDDPData)
   ret = readcsv(string(file,"_samples.csv"),Float64)'
   if size(ret,2) != dH.K*dH.S
     error("_samples.csv has wrong number of elements.")
@@ -132,7 +132,7 @@ function getDual(m::Model, idx::Int64)
     return m.linconstrDuals[idx]
 end
 
-function CreateModel(dH::H2SDDPData, dM::HMMData, p_state, LP)
+function CreateModel(dH::MSDDPData, dM::HMMData, p_state, LP)
   Q = Model(solver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=LP))
   @defVar(Q, u0 >= 0)
   @defVar(Q, u[1:dH.N] >= 0)
@@ -158,7 +158,7 @@ function CreateModel(dH::H2SDDPData, dM::HMMData, p_state, LP)
   return Q, sp
 end
 
-function CreateModels(dH::H2SDDPData, dM::HMMData, LP)
+function CreateModels(dH::MSDDPData, dM::HMMData, LP)
   sp = Array(SubProbData,dH.T-1,dH.K)
   AQ = Array(Model,dH.T-1,dH.K)
 
@@ -172,7 +172,7 @@ function CreateModels(dH::H2SDDPData, dM::HMMData, LP)
 end
 
 # Simulando estados forward
-function SimulateStates(dH::H2SDDPData, dM::HMMData, K_forward, r_forward)
+function SimulateStates(dH::MSDDPData, dM::HMMData, K_forward, r_forward)
   K_forward[1] = dM.k_ini
 
   for t = 2:dH.T
@@ -186,7 +186,7 @@ function SimulateStates(dH::H2SDDPData, dM::HMMData, K_forward, r_forward)
   end
 end
 
-function Forward(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, K_forward, r_forward; real_tc=0.0)
+function Forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, K_forward, r_forward; real_tc=0.0)
 
   # Inicializando
   x_trial = zeros(dH.N,dH.T)
@@ -246,7 +246,7 @@ function Forward(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
   return x_trial, x0_trial, FO_forward, u_trial
 end
 
-function Backward(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
+function Backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
   # Inicializando
   cuts = Array(Cut,dH.T,dH.K)
   α = ones(dH.T,dH.K)
@@ -310,7 +310,7 @@ function Backward(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{Sub
   return α, β
 end
 
-function addCut(dH::H2SDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
+function addCut(dH::MSDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
   θ = getVar(Q,:θ)
   u = getVar(Q,:u)
   u0 = getVar(Q,:u0)
@@ -319,7 +319,7 @@ function addCut(dH::H2SDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
       + sum{(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*((1+dM.r[i,j,s])*u[i] - x_trial[i,t+1]), i = 1:dH.N})
 end
 
-function SDDP( dH::H2SDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
+function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
 
   x_trial = []
   x0_trial = []
@@ -426,7 +426,7 @@ function SDDP( dH::H2SDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
     debug("Evaluating the Lower Bound")
     K_forward_o = Array(Int64,dH.T);
     r_forward_o = zeros(dH.N,dH.T);
-    addrequire(file, H2SDDP)
+    addrequire(file, MSDDP)
     write(file,"dH",dH)
     write(file,"dM",dM)
     for s_f = 1:3
@@ -441,7 +441,7 @@ function SDDP( dH::H2SDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
   return LB, UB, AQ, sp, list_α, list_β, vcat(x0_trial',x_trial), u_trial,LB_conserv
 end
 
-function changeP_j(dH::H2SDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_state)
+function changeP_j(dH::MSDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_state)
   chgConstrRHS(Q, subp.risco, dH.M ) # Disable the constraint
   chgConstrRHS(Q, subp.caixa, dH.x0_ini)
   for i = 1:dH.N
@@ -460,7 +460,7 @@ function changeP_j(dH::H2SDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_s
                   + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
 end
 
-function calExpRet(dH::H2SDDPData, dM::HMMData, p_j)
+function calExpRet(dH::MSDDPData, dM::HMMData, p_j)
   ret = zeros(dH.N)
   for j = 1:dH.K
     for s = 1:dH.S
@@ -470,7 +470,7 @@ function calExpRet(dH::H2SDDPData, dM::HMMData, p_j)
   return ret
 end
 
-function simulate(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, test_ret::Array{Float64,2}, pk_r::Array{Float64,2},
+function simulate(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, test_ret::Array{Float64,2}, pk_r::Array{Float64,2},
    x_ini::Array{Float64,1}, x0_ini::Float64; real_tc=0.0)
 
   if size(test_ret,2) != dH.T-1
@@ -493,7 +493,7 @@ function simulate(dH::H2SDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{Sub
   return x,x0,exp_ret
 end
 
-function simulatePercPort(dH::H2SDDPData, test_ret::Array{Float64,2}, x_ini::Array{Float64,1}, x_p::Array{Float64,1})
+function simulatePercPort(dH::MSDDPData, test_ret::Array{Float64,2}, x_ini::Array{Float64,1}, x_p::Array{Float64,1})
    T_test = size(test_ret,2)
    x = Array(Float64,dH.N+1, T_test+1)
    x[:,1] = x_ini

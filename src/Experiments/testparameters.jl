@@ -1,6 +1,5 @@
 
-push!(LOAD_PATH, "../")
-using H2SDDP
+using MSDDP
 using Distributions
 using Base.Test
 using Logging
@@ -23,14 +22,14 @@ GAPP = -10 # GAP mínimo em porcentagem
 Max_It = 5
 α_lB = 0.9
 
-dH  = H2SDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
 file_name = "ken_10DInd_90a14"
 file = string("../C++/output/",file_name)
 
 @Logging.configure(level=Logging.INFO)
 
-function test_algo(dH::H2SDDPData, LP)
+function test_algo(dH::MSDDPData, LP)
   Logging.configure(level=INFO, filename="CPLEX_$LP.log")
 
   γs = [0.001; 0.01; 0.02]

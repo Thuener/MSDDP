@@ -1,6 +1,5 @@
-push!(LOAD_PATH, "../")
 using JLD
-using H2SDDP
+using MSDDP
 using Gadfly
 using DataFrames
 
