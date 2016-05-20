@@ -1,11 +1,7 @@
-using Logging
-@Logging.configure(level=Logging.INFO)
-
 tests = ["hmm",
          "lhs",
-         "inputs",
-         "instmsddp",
          "msddp",
+         "inputs",
          "realsimulate"]
 
 for t in tests

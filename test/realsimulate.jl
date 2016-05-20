@@ -2,8 +2,7 @@ using MSDDP
 using Distributions
 using Base.Test
 
-## Teste para uma distribuição específica
-Logging.info("Test with ken_5MInd base")
+info("Test with ken_5MInd base")
 srand(123)
 N = 5
 T = 10
@@ -13,18 +12,17 @@ S = 100
 x_ini = zeros(N)
 x0_ini = 1.0
 c = 0.00
-M = 9999999#(1+maximum(r))^(T-1)*(sum(x_ini)+x0_ini)-(sum(x_ini)+x0_ini);
+M = 9999999
 γ = 0.1
-#Parâmetros
 S_LB = 1000
 S_FB = 1
-GAPP = 1 # GAP mínimo em porcentagem
+GAPP = 1
 Max_It = 100
 α_lB = 0.9
 
 dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
-#Run the C++ code to output HMM/LHS data
+# Run the C++ code to output HMM/LHS data
 file_name = "ken_5MInd"
 id = 1
 start_train = 0
@@ -51,7 +49,7 @@ x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
 @test_approx_eq_eps x[1,:] [1.0205000000328985 1.0044781500795639 1.0479720539866164 1.0916724886288345] 1e-6
 @test_approx_eq_eps sum([x0'; x],1) [1.0205000000328985 1.0044781500795639 1.0479720539866164 1.0916724886288345] 1e-5
 
-# Mudando alguns parâmetros
+# Changing the CVaR limit
 dH.γ = 0.01
 LB, UB, AQ, sp = SDDP(dH, dM)
 x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
@@ -81,7 +79,7 @@ x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
 @test_approx_eq_eps sum([x0'; x],1) [1.0050979693655429 1.0036647587164311 1.0135498652826926 1.018381767937568] 1e-5
 
 
-# Mudando a quantidade de estados
+# Changing the number of states
 dH.K = 3
 readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name 3 $N $S
   $id $start_train $n_rows_train $n_rows_test`)

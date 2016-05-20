@@ -56,7 +56,7 @@ type SubProbData
   risco::Int64
 end
 
-function readHMMPara(file, dH::MSDDPData)
+function inithmm(file, dH::MSDDPData)
   ret = readcsv(string(file,"_samples.csv"),Float64)'
   if size(ret,2) != dH.K*dH.S
     error("_samples.csv has wrong number of elements.")
@@ -406,6 +406,7 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
         LB_conserv = (mean(LB[1:s_f]) - quantile(Normal(),dH.α_lB) * std(LB[1:s_f])/sqrt(s_f))
         GAP = 100*(UB - LB_conserv)/UB
         if GAP < dH.GAPP
+          LB = LB[1:s_f] # only return the LB that were used
           info("GAP LB $GAP is lower then $(dH.GAPP)")
           break
         end
@@ -438,7 +439,7 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
     end
   end
   dH.S_LB = S_LB_Ini
-  return LB, UB, AQ, sp, list_α, list_β, vcat(x0_trial',x_trial), u_trial,LB_conserv
+  return LB, UB, LB_conserv, AQ, sp, list_α, list_β, vcat(x0_trial',x_trial), u_trial
 end
 
 function changeP_j(dH::MSDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_state)

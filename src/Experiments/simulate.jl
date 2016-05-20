@@ -1,7 +1,7 @@
 using MSDDP
 using Distributions
 using Logging
-@Logging.configure(level=Logging.DEBUG)
+Logging.configure(level=Logging.DEBUG)
 
 srand(123)
 Se = 1000

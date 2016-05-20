@@ -2,7 +2,7 @@ using MSDDP
 using Distributions
 using HypothesisTests
 using Logging
-@Logging.configure(level=Logging.DEBUG)
+Logging.configure(level=Logging.DEBUG)
 
 #=
 function debug(msg)

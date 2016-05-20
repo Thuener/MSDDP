@@ -1,9 +1,9 @@
-
 using MSDDP
 using Distributions
 using Base.Test
-using Logging
 using Gadfly
+using Logging
+Logging.configure(level=Logging.INFO)
 
 N = 10
 T = 5
@@ -26,8 +26,6 @@ dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_
 
 file_name = "ken_10DInd_90a14"
 file = string("../C++/output/",file_name)
-
-@Logging.configure(level=Logging.INFO)
 
 function test_algo(dH::MSDDPData, LP)
   Logging.configure(level=INFO, filename="CPLEX_$LP.log")

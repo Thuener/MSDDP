@@ -1,10 +1,10 @@
-
 using MSDDP
 using Distributions
 using Base.Test
 using Logging
 using Gadfly
 using DataFrames
+using Logging
 
 N = 10
 T = 5
@@ -29,7 +29,7 @@ file_name = "ken_10DInd_90a14"
 file = string("../C++/output/",file_name)
 #readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $K $N $S`)
 #dM = readHMMPara(file, dH)
-@Logging.configure(level=Logging.INFO,filename="FrontEff3D.log")
+Logging.configure(level=Logging.INFO,filename="FrontEff3D.log")
 
 readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $(dH.K) $(dH.N) $(dH.S)`)
 dM = readHMMPara(file, dH)
