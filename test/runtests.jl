@@ -1,6 +1,7 @@
 tests = ["hmm",
          "lhs",
          "msddp",
+         "hmm_msddp",
          "inputs",
          "realsimulate"]
 
