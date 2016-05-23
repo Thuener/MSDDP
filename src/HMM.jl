@@ -8,6 +8,7 @@ using PyCall
 function train_hmm(data, n_states, lst; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
 	model[:fit](data,lst)
+	return model
 end
 
 end # end HMM

@@ -1,13 +1,14 @@
 module MSDDP
-export HMMData, MSDDPData
-export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
-
 
 using JuMP, CPLEX
 using Distributions
 using MathProgBase
 using Logging
 using JLD
+
+export HMMData, MSDDPData
+export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
+
 #=
 function debug(msg)
   println("DEBUG: ",msg)
@@ -27,7 +28,6 @@ end
 type HMMData
   r::Array{Float64,3}
   ps_j::Array{Float64,2}
-  prob_ini::Array{Float64,1}
   k_ini::Int64
   P_K::Array{Float64,2}
 end
@@ -54,34 +54,6 @@ type SubProbData
   caixa::Int64
   ativos::Array{Int64,1}
   risco::Int64
-end
-
-function inithmm(file, dH::MSDDPData)
-  ret = readcsv(string(file,"_samples.csv"),Float64)'
-  if size(ret,2) != dH.K*dH.S
-    error("_samples.csv has wrong number of elements.")
-  end
-  ret = exp(ret)-1
-  r = zeros(dH.N, dH.K, dH.S)
-  start = 1
-  for j = 1:dH.K
-    r[:,j,:] = ret[:,start:start+dH.S-1]
-    start += dH.S
-  end
-
-  # Probabilidades (condicionais a cada estado) para cada cenario p(S|K)
-  p = readcsv(string(file,"_PS.csv"),Float64)
-
-  # prob iniciais
-  prob_ini = readcsv(string(file,"_Pini.csv"),Float64)
-  prob_ini = reshape(prob_ini,size(prob_ini,1))
-  max_prob,k_ini = findmax(prob_ini)
-
-  # Matriz de transicao  (K_t x K_(t+1))
-  P_K = readcsv(string(file,"_PK.csv"),Float64)'
-
-  dM = HMMData( r, p, prob_ini, k_ini, P_K )
-  return dM
 end
 
 function Base.copy(source::Array{Model,2})

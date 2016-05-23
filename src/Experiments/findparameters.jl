@@ -51,7 +51,8 @@ function generateseriesMS(T::Int64,N::Int64,S::Int64,T_l::Int64)
   #p2 = reshape(p[:],N+1,120,1000)
 end
 
-function sampleslhs(dH::MSDDPData, file_name::String, file_dir::String)
+# Choose the number os samples for the LHS
+function sampleslhs(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractString)
   dH.K = 3
   last_std = 10000.0
   last_mean = 10000.0
@@ -91,7 +92,7 @@ function sampleslhs(dH::MSDDPData, file_name::String, file_dir::String)
 end
 
 # Choose the number of sates for the HMM
-function beststate(dH::MSDDPData, file_name::String, file_dir::String)
+function beststate(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractString)
   last_ret = 0
   last_all = 0
   max_state = 7
@@ -117,16 +118,16 @@ function beststate(dH::MSDDPData, file_name::String, file_dir::String)
     #Simulate
     input_file = string("../C++/input/",file_name,".csv")
     r = readcsv(input_file,Float64)
-    r = reshape(r,N+1,T_l,Se)
+    r = reshape(r,N+1,T_l,Sc)
     r = r[1:N,1:dH.T-1,:]
     r = exp(r)-1
     pk_r = readcsv(string(file,"_PK_r.csv"),Float64)'
-    pk_r = reshape(pk_r,dH.K,T_l,Se)
+    pk_r = reshape(pk_r,dH.K,T_l,Sc)
     pk_r = pk_r[:,1:dH.T-1,:]
     info("Simulating SDDP")
-    ret = zeros(Float64,Se)
-    all = zeros(Float64,N+1,dH.T,Se)
-    for i=1:Se
+    ret = zeros(Float64,Sc)
+    all = zeros(Float64,N+1,dH.T,Sc)
+    for i=1:Sc
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, r[:,:,i], pk_r[:,:,i] , x_ini_s[2:N+1], x_ini_s[1])
       ret[i] = x0[end]+sum(x[:,end])-1
       all[:,:,i] = vcat(x0',x)
@@ -142,7 +143,7 @@ function beststate(dH::MSDDPData, file_name::String, file_dir::String)
       if DEBUG == true
         γ_srt = string(dH.γ)[3:end]
         c_srt = string(dH.c)[3:end]
-        writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)$(k)_all_.csv"),reshape(all,N+1,(dH.T)*Se)')
+        writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)$(k)_all_.csv"),reshape(all,N+1,(dH.T)*Sc)')
         writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)$(k)_ret.csv"),ret)
         writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)_table.csv"),hcat(UBs,MRets,PVals))
       end
@@ -171,11 +172,11 @@ DEBUG = true
 srand(12345)
 T_s = 240
 N = 3
-Se = 1000
+Sc = 1000
 T_l = 120
-#generateseriesMS(T_s,N,Se,T_l)
+#generateseriesMS(T_s,N,Sc,T_l)
 
-#Parâmetros
+#Parameters
 N = 3
 T = 13
 K = 4
@@ -194,10 +195,9 @@ Max_It = 100
 γs = [0.001,0.003,0.006]
 cs = [0.005,0.01,0.02]
 
-file_name = "$(N)MS_120_$(Se)"
+file_name = "$(N)MS_120_$(Sc)"
 
 
-# Choose the number os samples for the LHS
 c = cs[2]
 γ = γs[2]
 
