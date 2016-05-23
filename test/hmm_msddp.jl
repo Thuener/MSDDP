@@ -1,6 +1,4 @@
 using Base.Test
-using MSDDP
-using HMM
 using HMM_MSDDP
 
 srand(12345)
@@ -30,8 +28,11 @@ c = 0.01
 dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
 file = "./test_hmm_msddp.csv"
+ret = readcsv(file, Float64)
+ret = reshape(ret, dH.N, T_l, Sc)
+ret = reshape(ret, dH.N, T_l*Sc)
 
-dM = inithmm(file, dH, T_l, Sc)
+dM = inithmm(ret', dH, T_l, Sc)
 
 order = Array(Int64,dH.K)
 found = true

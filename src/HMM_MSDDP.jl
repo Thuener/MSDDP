@@ -5,15 +5,20 @@ using MSDDP
 using LHS
 
 export inithmm
+#MSDDP
+export HMMData, MSDDPData
+export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
 
+function inithmm(ret::Array{Float64,2}, dH::MSDDPData)
+  T_l=size(ret,1)
+  Sc=1
+  return inithmm(ret, dH, T_l, Sc)
+end
 ## Uses HMM and LHS to populate HMMData for MSDDP
-function inithmm(file::AbstractString, dH::MSDDPData, T_l::Int64, Sc::Int64)
+function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64)
   ## Train HMM with data
-  ret = readcsv(file, Float64)
-  ret = reshape(ret, dH.N, T_l, Sc)
-  ret = reshape(ret, dH.N, T_l*Sc)
   lst = fill(T_l, Sc)
-  model = train_hmm(ret',dH.K,lst)
+  model = train_hmm(ret,dH.K,lst)
 
   # Use the high initial probabilities as the first state
   max_prob, k_ini = findmax(model[:startprob_])

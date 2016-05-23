@@ -1,9 +1,8 @@
-using MSDDP
+using HMM_MSDDP
 using Distributions
 using Base.Test
-using
 
-info("Test with ken_5MInd base")
+info("Test with specific base")
 srand(123)
 N = 5
 T = 10
@@ -23,48 +22,45 @@ Max_It = 100
 
 dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
-#Run the C++ code to output HMM/LHS data
-file_name = "ken_5MInd"
-readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $K $N $S`)
+#Run the code to output HMM/LHS data
+file = "./test_inputs.csv"
+ret = readcsv(file, Float64)
 
-# HMM data
-file = string("../C++/output/",file_name)
-dM = readHMMPara(file, dH)
+dM = inithmm(ret, dH)
 
 
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.095 1e-3
-@test UB ≈ 0.09395446917685459
+@test_approx_eq_eps mean(LB) 0.0937307 1e-4
+@test_approx_eq_eps UB       0.0940507 1e-4
 
 # Changing some parameters
-info("Test with ken_5MInd base changing some parameters")
+info("Test with same base changing some parameters")
 dH.γ = 0.01
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.012 1e-3
-@test UB ≈ 0.012520202010382406
+@test_approx_eq_eps mean(LB) 0.015342 1e-4
+@test_approx_eq_eps UB       0.015342 1e-4
 
 dH.α = 0.90
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.014 1e-3
-@test UB ≈ 0.014398067051775272
+@test_approx_eq_eps mean(LB) 0.0165660 1e-4
+@test_approx_eq_eps UB       0.0165642 1e-4
 
 dH.T = 2
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.0015 1e-3
-@test UB ≈ 0.0015896398277930022
+@test_approx_eq_eps mean(LB) 0.0018270 1e-4
+@test_approx_eq_eps UB       0.0018270 1e-4
 
 # Changing the number of states
 dH.K = 3
-readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name 3 $N $S`)
-dM = readHMMPara(file, dH)
+dM = inithmm(ret, dH)
 
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.002 1e-3
-@test UB ≈ 0.0024893066023200477
+@test_approx_eq_eps mean(LB) 0.002502 1e-4
+@test_approx_eq_eps UB       0.002502 1e-4
 
 dH.γ = 0.1
 dH.α = 0.95
 dH.T = 10
 LB, UB = SDDP(dH, dM)
-@test_approx_eq_eps mean(LB) 0.121 1e-3
-@test UB ≈ 0.12172195885947175
+@test_approx_eq_eps mean(LB) 0.122333 1e-2
+@test_approx_eq_eps UB       0.122204 1e-2
