@@ -44,7 +44,7 @@ for j = 1:length(Ts)
     for i = 1:length(γs)
         tic()
         dH.γ = γs[i]
-        LB, UB, AQ, sp = SDDP(dH, dM)
+        LB, UB, LB_c, AQ = sddp(dH, dM)
         UBγs[i] = UB
         println("$(γs[i]), $(UBγs[i]), $(toq())")
     end

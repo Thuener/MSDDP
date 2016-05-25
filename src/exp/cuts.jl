@@ -76,7 +76,7 @@ for k = 1:size(γs,1)
     dM = readHMMPara(file, dH)
     dH.γ = γs[k]
     dH.S_LB = S_LB
-    LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial = SDDP(dH, dM, simuLB=true)
+    LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM, simuLB=true)
     jldopen("./output/cuts_$(k)_G$(string(dH.γ)[3:end])_C$(string(dH.c)[3:end]).jld", "w") do file
       write(file, "u", u_trial)
       write(file, "x", x_trial)

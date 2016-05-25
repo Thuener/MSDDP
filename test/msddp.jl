@@ -43,13 +43,13 @@ P_K = [0.97856492 0.00951288 0.05596537;
 
 dM = HMMData( r, p, 1, P_K )
 
-LB, UB = SDDP(dH, dM)
+LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.012190382057278354 1e-6
 @test_approx_eq_eps mean(LB) 0.14040311336871417 1e-6
 @test_approx_eq_eps UB 0.1403939524941526 1e-6
 
 dH.γ = 0.01
-LB, UB = SDDP(dH, dM)
+LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.003095216212566482 1e-6
 @test_approx_eq_eps mean(LB) 0.031091034358492455 1e-6
 @test_approx_eq_eps UB 0.031082995414706736 1e-6
@@ -93,7 +93,7 @@ P_K = P_K./(sum(P_K,2)*ones(1,K))
 
 dM = HMMData( r, p, 1, P_K )
 
-LB, UB = SDDP(dH, dM)
+LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.877159339801321 1e-6
 @test_approx_eq_eps mean(LB) 2.9593892510351316 1e-6
 @test_approx_eq_eps UB 2.9417165715720763 1e-6
@@ -122,7 +122,21 @@ P_K = P_K./(sum(P_K,2)*ones(1,K))
 
 dM = HMMData( r, p, 1, P_K )
 
-LB, UB, cuts = SDDP(dH, dM)
+LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.5062476890564355 1e-6
 @test_approx_eq_eps mean(LB) 2.324308852583431 1e-6
 @test_approx_eq_eps UB 2.320958685274508 1e-6
+
+dM.k_ini = 2
+LB, UB = sddp(dH, dM)
+
+@test_approx_eq_eps std(LB) 0.5133688046707432 1e-6
+@test_approx_eq_eps mean(LB) 2.3542755887406615 1e-6
+@test_approx_eq_eps UB 2.3176557310107113 1e-6
+
+dM.k_ini = 3
+LB, UB = sddp(dH, dM)
+
+@test_approx_eq_eps std(LB) 0.504913665568583 1e-6
+@test_approx_eq_eps mean(LB) 2.327154131888573 1e-6
+@test_approx_eq_eps UB 2.307816927602994 1e-6

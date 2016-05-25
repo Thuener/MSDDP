@@ -1,11 +1,10 @@
-using MSDDP
-using Distributions
+using HMM_MSDDP
 using Base.Test
 
-info("Test with ken_5MInd base")
+info("Test with specific base")
 srand(123)
 N = 5
-T = 10
+T = 11
 K = 1
 S = 100
 α = 0.95
@@ -22,86 +21,103 @@ Max_It = 100
 
 dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
-# Run the C++ code to output HMM/LHS data
-file_name = "ken_5MInd"
-id = 1
-start_train = 0
+start_train = 1
 n_rows_train = 100
 n_rows_test = 5
-readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $K $N $S
-  $id $start_train $n_rows_train $n_rows_test`)
+file = "./test_inputs.csv"
+ret = readcsv(file, Float64)
+ret_train = ret[start_train:start_train+n_rows_train-1,:]
+ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test-1,:]
 
-# HMM data
-file_prefix = string("../C++/output/",file_name,"_",id)
-dM = readHMMPara(file_prefix, dH)
+dM, model = inithmm(ret_train, dH)
 
+LB, UB, LB_c, AQ, sp = sddp(dH, dM)
 
-LB, UB, AQ, sp = SDDP(dH, dM)
+k_test = predict(model,ret_test)
+ret_test = exp(ret_test)-1
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+# With one state has to invest everything on the asset with the best profit (second asset)
+@test_approx_eq_eps sum(x0[2:end]) 0 1e-6
+@test_approx_eq_eps sum(x[collect(1:5) .!= 2,:]) 0 1e-6
+@test_approx_eq_eps x[2,6] 1.10306 5e-3
 
-input_file = string("../C++/input/",file_name,".csv")
-r = readcsv(input_file,Float64)
-r = exp(r)-1
-pk_r = readcsv(string(file_prefix,"_PK_r.csv"),Float64)'
-start_test = start_train+n_rows_train+1
-test_r = r[start_test:start_test+n_rows_test-1,:]'
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.0,0.0,0.0,0.0] 1e-6
-@test_approx_eq_eps x[1,:] [1.0205000000328985 1.0044781500795639 1.0479720539866164 1.0916724886288345] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.0205000000328985 1.0044781500795639 1.0479720539866164 1.0916724886288345] 1e-5
+# With bigger test ret
+n_rows_test = 10
+ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test-1,:]
+k_test = predict(model,ret_test)
+ret_test = exp(ret_test)-1
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps sum(x0[2:end]) 0 1e-6
+@test_approx_eq_eps sum(x[collect(1:5) .!= 2,:]) 0 1e-6
+@test_approx_eq_eps x[2,6] 1.10306 5e-3
+@test_approx_eq_eps x[2,11] 1.07393 5e-3
+
+# the results should be equal to simulate
+x_sw, x0_sw = simulate(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps x_sw x 1e-6
+@test_approx_eq_eps x0_sw x0 1e-6
+
+n_rows_test = 15
+ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test-1,:]
+k_test = predict(model,ret_test)
+ret_test = exp(ret_test)-1
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps sum(x0[2:end]) 0 1e-6
+@test_approx_eq_eps sum(x[collect(1:5) .!= 2,:]) 0 1e-6
+@test_approx_eq_eps x[2,6] 1.10306 5e-3
+@test_approx_eq_eps x[2,11] 1.07393 5e-3
+@test_approx_eq_eps x[2,16] 1.22899 5e-3
+
+n_rows_test = 40
+ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test-1,:]
+k_test = predict(model,ret_test)
+ret_test = exp(ret_test)-1
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps sum(x0[2:end]) 0 1e-6
+@test_approx_eq_eps sum(x[collect(1:5) .!= 2,:]) 0 1e-6
+@test_approx_eq_eps x[2,6] 1.10306 5e-3
+@test_approx_eq_eps x[2,11] 1.07393 5e-3
+@test_approx_eq_eps x[2,16] 1.22899 5e-3
+@test_approx_eq_eps x[2,41] 1.771 5e-3
+
+# Back to test with 5 samples
+n_rows_test = 5
+ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test-1,:]
+k_test = predict(model,ret_test)
+ret_test = exp(ret_test)-1
+dH.T = 5
 
 # Changing the CVaR limit
 dH.γ = 0.01
-LB, UB, AQ, sp = SDDP(dH, dM)
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.858401692576853,0.8620998682740822,0.861057282583879,0.8688678993344314] 1e-6
-@test_approx_eq_eps x[1,:] [0.0013866475012752548 0.0013432212781440424 0.0014220136022725061 0.0014327120564163085] 1e-6
-@test_approx_eq_eps x[2,:] [0.08466804493326922 0.08148977888117075 0.08734991861527637 0.08663699039563105] 1e-6
-@test_approx_eq_eps x[3,:] [0.018105369182835385 0.01788761839882134 0.01904756536670252 0.019100388320421678] 1e-6
-@test_approx_eq_eps x[4,:] [0.041746456902285185 0.04027315805454114 0.0433158877262674 0.0405491802031727] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.004308211096518 1.0030936448867596 1.012192667894398 1.016587170310073] 1e-5
+LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps x0 [1.0,0.8860859495014164,0.8885892029633965,0.8867773149286607,0.8922322003016439,0.8958911605188956] 1e-4
+@test_approx_eq_eps sum(x,1) [0.0 0.11673911895090322 0.11219104349873663 0.12015908983397636 0.11883355581715754 0.11560074159927679] 1e-4
 
 dH.α = 0.90
-LB, UB, AQ, sp = SDDP(dH, dM)
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.8399509733122524,0.8442330176427562,0.8430291909630733,0.8513321958447] 1e-6
-@test_approx_eq_eps x[1,:] [0.03987867932903003 0.03866015927018128 0.04091905927592926 0.04125870025816071] 1e-6
-@test_approx_eq_eps x[2,:] [0.07599508721747775 0.07319990335191821 0.07844688210533292 0.07786661161522966] 1e-6
-@test_approx_eq_eps x[4,:] [0.049273229506782625 0.047571678451575526 0.05115473293835722 0.047924260219477495] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.0050979693655429 1.0036647587164311 1.0135498652826926 1.018381767937568] 1e-5
-
-dH.T = 5
-LB, UB, AQ, sp = SDDP(dH, dM)
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.8399509733122524,0.8442330176427562,0.8430291909630733,0.8513321958447] 1e-6
-@test_approx_eq_eps x[1,:] [0.03987867932903003 0.03866015927018128 0.04091905927592926 0.04125870025816071] 1e-6
-@test_approx_eq_eps x[2,:] [0.07599508721747775 0.07319990335191821 0.07844688210533292 0.07786661161522966] 1e-6
-@test_approx_eq_eps x[4,:] [0.049273229506782625 0.047571678451575526 0.05115473293835722 0.047924260219477495] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.0050979693655429 1.0036647587164311 1.0135498652826926 1.018381767937568] 1e-5
-
+LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps x0 [1.0,0.8662482911536769,0.8691216734464607,0.8670408609371251,0.873303143561438,0.8775081519174449] 1e-4
+@test_approx_eq_eps sum(x,1) [0.0 0.1370687512256588 0.13179327183140258 0.1411032848924331 0.13969527834456313 0.13599158398239827] 1e-4
 
 # Changing the number of states
 dH.K = 3
-readall(`../C++/HMM /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name 3 $N $S
-  $id $start_train $n_rows_train $n_rows_test`)
-dM = readHMMPara(file_prefix, dH)
-input_file = string("../C++/input/",file_name,".csv")
-r = readcsv(input_file,Float64)
-r = exp(r)-1
-pk_r = readcsv(string(file_prefix,"_PK_r.csv"),Float64)'
-start_test = start_train+n_rows_train+1
-test_r = r[start_test:start_test+n_rows_test-1,:]'
+dM, model = inithmm(ret_train, dH)
 
-LB, UB, AQ, sp = SDDP(dH, dM)
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.8751433563272023,0.8808798980958331,0.8820897188746781,0.8918586722383713] 1e-6
-@test_approx_eq_eps x[4,:] [0.13141161746898375 0.12705750152818618 0.13701037003112307 0.1285138308401227] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.006554973796186 1.0079373996240193 1.0191000889058013 1.020372503078494] 1e-5
+LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test, k_test)
+@test_approx_eq_eps x0 [1.0,1.0,0.8374101083489728,0.8422626275774806,0.8487339769296859,1.018401902080441] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0 0.0 0.1683845664228364 0.17125986094733442 0.16966792515075504 0.0] 1e-3
+
+dM.k_ini = 2
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test, k_test)
+@test_approx_eq_eps x0 [1.0,0.8827963133481778,0.8362359989782762,0.8410817146248343,0.8475439906784971,0.8977809237139723] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0 0.11580161452612095 0.16814847911585665 0.17101974227004868 0.1694300384822756 0.11921830049210108] 1e-3
 
 dH.γ = 0.1
 dH.α = 0.95
 dH.T = 10
-LB, UB, AQ, sp = SDDP(dH, dM)
-x, x0 = simulate(dH, dM, AQ, sp, test_r, pk_r , x_ini, x0_ini)
-@test_approx_eq_eps x0 [0.024255369908554036,0.025497889873494217,0.02577156359289401,0.028002055019142325] 1e-6
-@test_approx_eq_eps x[4,:] [1.026971223197538 1.0370117189284034 1.1286967098134018 1.137730880624307] 1e-6
-@test_approx_eq_eps sum([x0'; x],1) [1.051226593106092 1.0625096088018977 1.1544682734062959 1.1657329356434492] 1e-5
+LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test, k_test)
+@test_approx_eq_eps x0 [1.0,0.04548421573744038,0.0,0.0,0.0,0.0] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0 0.9442376918146463 1.0253518961857253 1.0775423077129858 1.0883177308410836 1.1574259067979251] 1e-3

@@ -1,5 +1,4 @@
-tests = ["hmm",
-         "lhs",
+tests = ["lhs",
          "msddp",
          "hmm_msddp",
          "inputs",
@@ -8,5 +7,5 @@ tests = ["hmm",
 for t in tests
     fp = "$(t).jl"
     println("running $(fp) ...")
-    evalfile(fp)
+    @time evalfile(fp)
 end

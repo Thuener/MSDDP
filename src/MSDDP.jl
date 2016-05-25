@@ -7,7 +7,7 @@ using Logging
 using JLD
 
 export HMMData, MSDDPData
-export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
+export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
 
 #=
 function debug(msg)
@@ -104,7 +104,7 @@ function getDual(m::Model, idx::Int64)
     return m.linconstrDuals[idx]
 end
 
-function CreateModel(dH::MSDDPData, dM::HMMData, p_state, LP)
+function createmodel(dH::MSDDPData, dM::HMMData, p_state, LP)
   Q = Model(solver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=LP))
   @defVar(Q, u0 >= 0)
   @defVar(Q, u[1:dH.N] >= 0)
@@ -130,21 +130,20 @@ function CreateModel(dH::MSDDPData, dM::HMMData, p_state, LP)
   return Q, sp
 end
 
-function CreateModels(dH::MSDDPData, dM::HMMData, LP)
+function createmodels(dH::MSDDPData, dM::HMMData, LP)
   sp = Array(SubProbData,dH.T-1,dH.K)
   AQ = Array(Model,dH.T-1,dH.K)
 
-  AQ[1,1], sp[1,1] = CreateModel(dH,dM,dM.P_K[dM.k_ini,:]', LP)
-  for t = 2:dH.T-1
+  for t = 1:dH.T-1
     for k = 1:dH.K
-      AQ[t,k], sp[t,k] = CreateModel(dH,dM,dM.P_K[k,:]', LP)
+      AQ[t,k], sp[t,k] = createmodel(dH, dM, dM.P_K[k,:]', LP)
     end
   end
   return AQ, sp
 end
 
 # Simulando estados forward
-function SimulateStates(dH::MSDDPData, dM::HMMData, K_forward, r_forward)
+function simulatestates(dH::MSDDPData, dM::HMMData, K_forward, r_forward)
   K_forward[1] = dM.k_ini
 
   for t = 2:dH.T
@@ -158,7 +157,7 @@ function SimulateStates(dH::MSDDPData, dM::HMMData, K_forward, r_forward)
   end
 end
 
-function Forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, K_forward, r_forward; real_tc=0.0)
+function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, K_forward, ret; real_tc=0.0)
 
   # Inicializando
   x_trial = zeros(dH.N,dH.T)
@@ -168,8 +167,8 @@ function Forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
   u_trial = zeros(dH.N+1,dH.T)
 
   FO_forward = 0
-  k =1 # Only the first item of sp and AQ is used for the first stage
   for t = 1:dH.T-1
+    k = K_forward[t]
     subp = sp[t,k]
     Q = AQ[t,k]
 
@@ -199,7 +198,7 @@ function Forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     u = getVar(Q,:u)
     for i = 1:dH.N
       u_trial[i+1,t] = getValue(u[i])
-      x_trial[i,t+1] = (1+r_forward[i,t+1])*getValue(u[i])
+      x_trial[i,t+1] = (1+ret[i,t+1])*getValue(u[i])
     end
     u_trial[1,t] = getValue(getVar(Q,:u0))
 
@@ -211,14 +210,12 @@ function Forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     else
       x0_trial[t+1] = getValue(getVar(Q,:u0))
     end
-    k = K_forward[t+1]
-
   end
   #debug("NEW FO_forw = $FO_forward, x_T = $(x0_trial[end]+sum(x_trial[:,end]))")
   return x_trial, x0_trial, FO_forward, u_trial
 end
 
-function Backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
+function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
   # Inicializando
   cuts = Array(Cut,dH.T,dH.K)
   α = ones(dH.T,dH.K)
@@ -228,9 +225,6 @@ function Backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
   for k = 1:dH.K
     θ = getVar(AQ[dH.T-1,k],:θ)
     @addConstraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
-    if dH.T-1 == 1
-      break
-    end
   end
 
   # Adicionando cortes para t < T-1
@@ -272,17 +266,13 @@ function Backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
     end
 
     for k = 1:dH.K
-      addCut(dH, dM, AQ[t,k], cuts, t, x0_trial, x_trial)
-      # Para o primeiro estágio só adiciona corte no primeiro problema
-      if t == 1
-        break
-      end
+      addcut(dH, dM, AQ[t,k], cuts, t, x0_trial, x_trial)
     end
   end
   return α, β
 end
 
-function addCut(dH::MSDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
+function addcut(dH::MSDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
   θ = getVar(Q,:θ)
   u = getVar(Q,:u)
   u0 = getVar(Q,:u0)
@@ -291,7 +281,7 @@ function addCut(dH::MSDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
       + sum{(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*((1+dM.r[i,j,s])*u[i] - x_trial[i,t+1]), i = 1:dH.N})
 end
 
-function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
+function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
 
   x_trial = []
   x0_trial = []
@@ -299,7 +289,7 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
   r_forward = zeros(dH.N,dH.T);
   K_forward = Array(Int64,dH.T);
 
-  AQ, sp = CreateModels( dH, dM, LP )
+  AQ, sp = createmodels( dH, dM, LP )
 
   GAP = 100.0
   It = 0
@@ -322,23 +312,23 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
     for s_f = 1:dH.S_FB
       # Forward
       debug("Forward Step")
-      SimulateStates(dH, dM, K_forward, r_forward)
-      x_trial, x0_trial, FO_forward, u_trial = Forward(dH, dM, AQ, sp, K_forward, r_forward)
+      simulatestates(dH, dM, K_forward, r_forward)
+      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
 
       # Backward
       debug("Backward Step")
-      α, β = Backward(dH, dM, AQ, sp, x_trial, x0_trial)
+      α, β = backward(dH, dM, AQ, sp, x_trial, x0_trial)
       push!(list_α,α)
       push!(list_β,β)
 
 
       #Evaluate upper bound
-      status = solve(AQ[1,1])
+      status = solve(AQ[1,dM.k_ini])
       if status ≠ :Optimal
-        writeLP(AQ[1,1],"prob.lp")
+        writeLP(AQ[1,dM.k_ini],"prob.lp")
         error("Can't solve the problem status:",status)
       end
-      UB = getObjectiveValue(AQ[1,1])
+      UB = getObjectiveValue(AQ[1,dM.k_ini])
       debug("FO_forw = $FO_forward, UB = $UB, stabUB $(abs(UB/UB_last -1)*100)")
       if abs(UB/UB_last -1)*100 < 1
         it_stable += 1
@@ -371,8 +361,8 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
     LB_conserv = 0
     GAP = 100
     for s_f = 1:dH.S_LB #@sync @parallel TODO parallel not working
-      SimulateStates(dH, dM, K_forward, r_forward)
-      x_trial, x0_trial, FO_forward, u_trial = Forward(dH, dM, AQ, sp, K_forward, r_forward)
+      simulatestates(dH, dM, K_forward, r_forward)
+      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
       LB[s_f] = FO_forward
       if s_f >= S_LB_Ini
         LB_conserv = (mean(LB[1:s_f]) - quantile(Normal(),dH.α_lB) * std(LB[1:s_f])/sqrt(s_f))
@@ -403,8 +393,8 @@ function SDDP( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
     write(file,"dH",dH)
     write(file,"dM",dM)
     for s_f = 1:3
-      SimulateStates(dH, dM, K_forward_o, r_forward_o)
-      x_trial_o, x0_trial_o, FO_forward_o, u_trial_o = Forward(dH, dM, AQ, sp, K_forward_o, r_forward_o; parallel=parallel)
+      simulatestates(dH, dM, K_forward_o, r_forward_o)
+      x_trial_o, x0_trial_o, FO_forward_o, u_trial_o = forward(dH, dM, AQ, sp, K_forward_o, r_forward_o; parallel=parallel)
       write(file, "x$s_f", vcat(x0_trial_o',x_trial_o))
       write(file, "u$s_f", u_trial_o)
       write(file, "K$s_f", K_forward_o)
@@ -433,46 +423,85 @@ function changeP_j(dH::MSDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_st
                   + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
 end
 
-function calExpRet(dH::MSDDPData, dM::HMMData, p_j)
-  ret = zeros(dH.N)
-  for j = 1:dH.K
-    for s = 1:dH.S
-      ret += dM.r[:,j,s]*p_j[j]*dM.ps_j[s,j]
-    end
-  end
-  return ret
+function simulate_stateprob(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2},sp::Array{SubProbData,2},
+    ret_test::Array{Float64,2}, pk_r::Array{Float64,2}; real_tc=0.0)
+
+   K_forward = Array(Int64,dH.T);
+   K_forward[1] = dM.k_ini
+   for t = 1:dH.T
+     K_forward[t] = findmax(pk_r[:,t-1])[2]
+   end
+   return simulate(dH, dM, AQ, sp, ret_test, K_forward , x_ini, x0_ini, real_tc=real_tc)
 end
 
-function simulate(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, test_ret::Array{Float64,2}, pk_r::Array{Float64,2},
-   x_ini::Array{Float64,1}, x0_ini::Float64; real_tc=0.0)
-
-  if size(test_ret,2) != dH.T-1
-    error("Return series has to have $(dH.T-1) samples.")
+function simulate(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
+    ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
+  if size(ret_test,2) != dH.T-1
+    error("Return series has to have $(dH.T-1) samples use simulatesw.")
   end
 
-  dH.x_ini = x_ini
-  dH.x0_ini = x0_ini
   K_forward = Array(Int64,dH.T);
   r_forward = zeros(dH.N,dH.T);
 
-  r_forward[:,2:dH.T] = test_ret
+  r_forward[:,2:dH.T] = ret_test
 
   K_forward[1] = dM.k_ini
-  for t = 2:dH.T
-    K_forward[t] = findmax(pk_r[:,t-1])[2]
-  end
-  x, x0, exp_ret, u = Forward(dH, dM, AQ, sp, K_forward, r_forward, real_tc=real_tc)
+  K_forward[2:dH.T] = k_test[1:end]
+  x, x0, exp_ret, u = forward(dH, dM, AQ, sp, K_forward, r_forward, real_tc=real_tc)
 
-  return x,x0,exp_ret
+  return x, x0, exp_ret
 end
+# Simulate using sliging windows
+function simulatesw(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
+  ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
+   dH_ = deepcopy(dH)
+   init_T = dH_.T
+   T_test = size(ret_test,2)
+   its=floor(Int,T_test/(dH_.T-1))
 
-function simulatePercPort(dH::MSDDPData, test_ret::Array{Float64,2}, x_ini::Array{Float64,1}, x_p::Array{Float64,1})
-   T_test = size(test_ret,2)
+   all_x = dH_.x_ini
+   all_x0 = dH_.x0_ini
+
+   r_forward = zeros(dH_.N,dH_.T)
+   K_forward_a = Array(Int64,dH_.T)
+   K_forward_a[1] = dM.k_ini
+   for i = 1:its
+     r_forward[:,2:dH_.T] = ret_test[:,(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)]
+     K_forward_a[2:dH_.T] = k_test[(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)]
+     x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward, real_tc=real_tc)
+     all_x = hcat(all_x,x[:,2:end])
+     all_x0 = vcat(all_x0,x0[2:end])
+     dH_.x_ini = x[:,end]
+     dH_.x0_ini = x0[end]
+     K_forward_a[1] = K_forward_a[end]
+   end
+
+   # Run for the last periods
+   diff_t = round(Int, T_test - its*(dH_.T-1)+1)
+   if diff_t > 0
+     r_forward_a = zeros(dH_.N,diff_t)
+     K_forward_a = Array(Int64,diff_t)
+     r_forward_a[:,2:diff_t] = ret_test[:,its*(dH_.T-1)+1:end]
+     K_forward_a[1] = dM.k_ini
+     K_forward_a[2:diff_t] = k_test[its*(dH_.T-1)+1:end]
+     dH_.T = diff_t
+     x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward_a, real_tc=real_tc)
+     dH_.T = init_T
+     all_x = hcat(all_x,x[:,2:end])
+     all_x0 = vcat(all_x0,x0[2:end])
+   end
+
+   return all_x, all_x0
+ end
+
+function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_ini::Array{Float64,1},
+    x_p::Array{Float64,1})
+   T_test = size(ret_test,2)
    x = Array(Float64,dH.N+1, T_test+1)
    x[:,1] = x_ini
    for t = 2:T_test+1
      for i = 2:dH.N+1
-       x[i,t] = (1+test_ret[i-1,t-1])*x[i,t-1]
+       x[i,t] = (1+ret_test[i-1,t-1])*x[i,t-1]
      end
      x[1,t] = x[1,t-1]
      total = sum(x[:,t])

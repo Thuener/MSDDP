@@ -42,7 +42,7 @@ function test_algo(dH::MSDDPData, LP)
           dM = readHMMPara(file, dH)
           dH.γ = γs[k]
           dH.S_LB = S_LB
-          SDDP(dH, dM, LP=LP)
+          sddp(dH, dM, LP=LP)
           TimesCPLEXS[j,k] = toq()
           println("[$j, $k] = $(γs[k]), $(TimesCPLEXS[j,k])")
       end

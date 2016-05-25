@@ -1,13 +1,30 @@
 module HMM_MSDDP
 
-using HMM
 using MSDDP
 using LHS
+using PyCall
+@pyimport numpy as np
+@pyimport hmmlearn.hmm as hl_hmm
 
-export inithmm
+export train_hmm, predict, inithmm
 #MSDDP
 export HMMData, MSDDPData
-export SDDP, simulate, SimulateStates, readHMMPara, simulatePercPort
+export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
+
+function train_hmm(data::Array{Float64,2}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
+	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
+	model[:fit](data,lst)
+	return model
+end
+
+function predict(model,data::Array{Float64,2})
+	samples = size(data,1)
+	states = Array(Int64,samples)
+	for i = 1:samples
+		states[i] = (model[:predict](data[1:i,:]) .+1)[end]
+	end
+	return states
+end
 
 function inithmm(ret::Array{Float64,2}, dH::MSDDPData)
   T_l=size(ret,1)
@@ -16,6 +33,7 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData)
 end
 ## Uses HMM and LHS to populate HMMData for MSDDP
 function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64)
+	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
   lst = fill(T_l, Sc)
   model = train_hmm(ret,dH.K,lst)
@@ -39,7 +57,7 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64)
   r = exp(r)-1
 
   dM = HMMData( r, p_s, k_ini, P_K )
-  return dM
+  return dM, model
 end
 
 end #HMM_MSDDP

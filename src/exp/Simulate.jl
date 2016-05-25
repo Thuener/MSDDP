@@ -52,7 +52,7 @@ all = zeros(Float64,N+1,dH.T-1,Se)
 ##########################################################################################################################
 info("#### SDDP with temporal dependecy and transactional costs ####")
 info("Train")
-@time LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial = SDDP(dH, dM)
+@time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM)
 
 info("Simulating")
 tic()
@@ -75,7 +75,7 @@ info("#### SDDP with temporal dependecy and no transactional costs ####")
 dH.c = 0.0
 
 info("Train")
-@time LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial = SDDP(dH, dM)
+@time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM)
 
 
 info("Simulating")
@@ -94,7 +94,7 @@ info("#### Myopic ####")
 dH.T = 2
 
 info("Train")
-@time LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial = SDDP(dH, dM)
+@time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM)
 
 info("Simulating")
 tic()
@@ -136,7 +136,7 @@ pk_r = pk_r[:,1:dH.T-1,:]
 dH.N -= 1
 
 info("Train")
-@time LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial = SDDP(dH, dM)
+@time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM)
 
 info("Simulating")
 tic()

@@ -71,7 +71,7 @@ function sampleslhs(dH::MSDDPData, file_name::AbstractString, file_dir::Abstract
       dM.r = dM.r[1:N,:,:] # removing the state z
       dH.N -= 1
       info("Train SDDP with $s LHS samples")
-      @time LB, UB, AQ, sp, list_α, list_β, x_trial, u_trial, LB_c = SDDP(dH, dM)
+      @time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial, LB_c = sddp(dH, dM)
       UBs[it] = UB
     end
     curr_std = sqrt(var(UBs))
@@ -112,7 +112,7 @@ function beststate(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractS
     dM.r = dM.r[1:N,:,:] # removing the state z
     dH.N -= 1
     info("Train SDDP with $k states")
-    @time LB, UB, AQ, sp = SDDP(dH, dM)
+    @time LB, UB, LB_c, AQ = sddp(dH, dM)
     UBs[k] = UB
 
     #Simulate
