@@ -142,16 +142,16 @@ function createmodels(dH::MSDDPData, dM::HMMData, LP)
   return AQ, sp
 end
 
-# Simulando estados forward
+# Simulating forward states
 function simulatestates(dH::MSDDPData, dM::HMMData, K_forward, r_forward)
   K_forward[1] = dM.k_ini
 
   for t = 2:dH.T
-    # Simulando estados forward
+    # Simulating states
     prob_trans = squeeze(dM.P_K[K_forward[t-1],1:dH.K],1);
     K_forward[t] = rand(Categorical(prob_trans));
 
-    # Simulando cenário forward
+    # Simulationg forward scenarios
     r_idx = rand(Categorical(dM.ps_j[1:dH.S,K_forward[t]]))
     r_forward[1:dH.N,t] = dM.r[1:dH.N,K_forward[t],r_idx];
   end
@@ -159,7 +159,7 @@ end
 
 function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, K_forward, ret; real_tc=0.0)
 
-  # Inicializando
+  # Initialize
   x_trial = zeros(dH.N,dH.T)
   x0_trial = zeros(dH.T)
   x_trial[1:dH.N,1] = dH.x_ini
@@ -177,14 +177,14 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     for i = 1:dH.N
       chgConstrRHS(Q, subp.ativos[i], x_trial[i,t])
     end
-    # Resolvendo o subprob do tempo t
+    # Resolve subprob in time t
     status = solve(Q)
     if status ≠ :Optimal
       writeLP(Q,"prob.lp")
       error("Can't solve the problem status:",status)
     end
 
-    # Calculando benefício imediato
+    # Evalute immediate benefit
     b = getVar(Q,:b)
     d = getVar(Q,:d)
     u = getVar(Q,:u)
@@ -194,7 +194,7 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
 
     FO_forward += getValue(B_imed)
 
-    # Atualizando o estado
+    # Update trials
     u = getVar(Q,:u)
     for i = 1:dH.N
       u_trial[i+1,t] = getValue(u[i])
@@ -211,23 +211,23 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
       x0_trial[t+1] = getValue(getVar(Q,:u0))
     end
   end
-  #debug("NEW FO_forw = $FO_forward, x_T = $(x0_trial[end]+sum(x_trial[:,end]))")
+
   return x_trial, x0_trial, FO_forward, u_trial
 end
 
 function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
-  # Inicializando
+  # Initialize
   cuts = Array(Cut,dH.T,dH.K)
   α = ones(dH.T,dH.K)
   β = ones(dH.N+1,dH.T,dH.K)
 
-  # Adicionando cortes para T-1
+  # Add cuts to T-1
   for k = 1:dH.K
     θ = getVar(AQ[dH.T-1,k],:θ)
     @addConstraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
   end
 
-  # Adicionando cortes para t < T-1
+  # Add cuts to t < T-1
   for t = dH.T-2:-1:1
     for j = 1:dH.K
       subp = sp[t+1,j]
@@ -239,7 +239,6 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
         chgConstrRHS(Q, subp.ativos[i], x_trial[i,t+1])
       end
 
-      # Resolvendo
       status = solve(Q)
       if status ≠ :Optimal
         info(Q)
@@ -251,7 +250,7 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
       θ = getVar(Q,:θ)
 
 
-      # Computando corte
+      # Evalute custs
       λ0 = getDual(Q, subp.caixa)
       λ = zeros(dH.N)
       for i = 1:dH.N
@@ -322,7 +321,7 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
       push!(list_β,β)
 
 
-      #Evaluate upper bound
+      # Evaluate upper bound
       status = solve(AQ[1,dM.k_ini])
       if status ≠ :Optimal
         writeLP(AQ[1,dM.k_ini],"prob.lp")
@@ -364,6 +363,7 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
       simulatestates(dH, dM, K_forward, r_forward)
       x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
       LB[s_f] = FO_forward
+      # Start testing after S_LB_Ini simulations
       if s_f >= S_LB_Ini
         LB_conserv = (mean(LB[1:s_f]) - quantile(Normal(),dH.α_lB) * std(LB[1:s_f])/sqrt(s_f))
         GAP = 100*(UB - LB_conserv)/UB
@@ -404,40 +404,21 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
   return LB, UB, LB_conserv, AQ, sp, list_α, list_β, vcat(x0_trial',x_trial), u_trial
 end
 
-function changeP_j(dH::MSDDPData, dM::HMMData, Q::Model, subp::SubProbData, p_state)
-  chgConstrRHS(Q, subp.risco, dH.M ) # Disable the constraint
-  chgConstrRHS(Q, subp.caixa, dH.x0_ini)
-  for i = 1:dH.N
-    chgConstrRHS(Q, subp.ativos[i], dH.x_ini[i])
-  end
-  y = getVar(Q,:y)
-  b = getVar(Q,:b)
-  d = getVar(Q,:d)
-  z = getVar(Q,:z)
-  u = getVar(Q,:u)
-  θ = getVar(Q,:θ)
-  @addConstraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
-                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
-
-  @setObjective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
-                  + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
-end
-
 function simulate_stateprob(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2},sp::Array{SubProbData,2},
     ret_test::Array{Float64,2}, pk_r::Array{Float64,2}; real_tc=0.0)
 
-   K_forward = Array(Int64,dH.T);
-   K_forward[1] = dM.k_ini
-   for t = 1:dH.T
-     K_forward[t] = findmax(pk_r[:,t-1])[2]
+   k_test = Array(Int64,dH.T-1);
+   for t = 1:dH.T-1
+     k_test[t] = findmax(pk_r[:,t])[2]
    end
-   return simulate(dH, dM, AQ, sp, ret_test, K_forward , x_ini, x0_ini, real_tc=real_tc)
+   return simulate(dH, dM, AQ, sp, ret_test, k_test, real_tc=real_tc)
 end
 
 function simulate(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
     ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
-  if size(ret_test,2) != dH.T-1
-    error("Return series has to have $(dH.T-1) samples use simulatesw.")
+  samps = size(ret_test,2)
+  if samps != dH.T-1
+    error("Return series has to have $(dH.T-1) and has $(samps) samples, use simulatesw if you want to really do that.")
   end
 
   K_forward = Array(Int64,dH.T);
@@ -451,7 +432,8 @@ function simulate(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
 
   return x, x0, exp_ret
 end
-# Simulate using sliging windows
+
+# Simulate using sliding windows
 function simulatesw(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
   ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
    dH_ = deepcopy(dH)
@@ -476,7 +458,7 @@ function simulatesw(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{Su
      K_forward_a[1] = K_forward_a[end]
    end
 
-   # Run for the last periods
+   # Simulate last periods
    diff_t = round(Int, T_test - its*(dH_.T-1)+1)
    if diff_t > 0
      r_forward_a = zeros(dH_.N,diff_t)
@@ -506,7 +488,7 @@ function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_ini::Arr
      x[1,t] = x[1,t-1]
      total = sum(x[:,t])
 
-     # Ajust the portfolio and discont transactional costs
+     # Adjust the portfolio and discount transaction costs
      cost = 0.0
      for i = 2:dH.N+1
        cost += abs(x[i,t]-total*x_p[i])*dH.c

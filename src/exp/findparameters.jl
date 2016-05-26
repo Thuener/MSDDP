@@ -1,4 +1,4 @@
-using MSDDP
+using HMM_MSDDP
 using Distributions
 using HypothesisTests
 using Logging
@@ -35,7 +35,7 @@ function generateseriesMS(T::Int64,N::Int64,S::Int64,T_l::Int64)
     end
   end
 
-  # Teste the convergence of the series
+  # Test the convergence of the series
   var_T = var(p[N+1,T,:])
   info("var_T $var_T")
   for t=1:T
@@ -47,29 +47,29 @@ function generateseriesMS(T::Int64,N::Int64,S::Int64,T_l::Int64)
   end
   p2 = p[:,T_l+1:T,:]
 
-  writecsv("../C++/input/$(N)MS_120_$(S).csv",p2[:])#hcat(p',z))
+  writecsv("../../input/$(N)MS_120_$(S).csv",p2[:])#hcat(p',z))
   #p2 = reshape(p[:],N+1,120,1000)
 end
 
 # Choose the number os samples for the LHS
-function sampleslhs(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractString)
+function sampleslhs(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   dH.K = 3
   last_std = 10000.0
   last_mean = 10000.0
   best_samp = 0
-  for s=100:250:1200
+  N_ = dH.N
+  for s=100:200:700
     dH.S = s
     max_it = 10
     UBs = SharedArray(Float64,max_it)
     @sync @parallel for it=1:max_it #
-      dH.N = N+1
-      readall(`../C++/MS/HMM_MS /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $(dH.K) $(dH.N) $(dH.S) $(it)`)
+      dH.N = N_
+      dM, model = inithmm(reshape(ln_ret,N_,T_l*Sc)', dH, T_l, Sc)
 
       # HMM data
-      file = string(file_dir,file_name,"_",it)
-      dM = readHMMPara(file, dH)
-      dM.r = dM.r[1:N,:,:] # removing the state z
-      dH.N -= 1
+      dH.N = N_ -1
+      dM.r = dM.r[1:dH.N,:,:] # removing the state z
+
       info("Train SDDP with $s LHS samples")
       @time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial, LB_c = sddp(dH, dM)
       UBs[it] = UB
@@ -92,60 +92,55 @@ function sampleslhs(dH::MSDDPData, file_name::AbstractString, file_dir::Abstract
 end
 
 # Choose the number of sates for the HMM
-function beststate(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractString)
-  last_ret = 0
-  last_all = 0
+function beststate(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
+  last_ret_c = 0
+  last_all_c = 0
   max_state = 7
+  output_dir = "../../output/"
   UBs = zeros(Float64,max_state)
   PVals = zeros(Float64,max_state)
   MRets = zeros(Float64,max_state)
   best_k = 0
+  N_ = dH.N
+  ret_e = exp(ln_ret)-1
   for k=1:7
     dH.K = k
 
-    dH.N = N+1
-    readall(`../C++/MS/HMM_MS /home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/C++ $file_name $(dH.K) $(dH.N) $(dH.S) $(k)`)
+    dH.N = N_
+    dM, model = inithmm(reshape(ln_ret, N_, T_l*Sc)', dH, T_l, Sc)
 
     # HMM data
-    file = string(file_dir,file_name,"_",k)
-    dM = readHMMPara(file, dH)
-    dM.r = dM.r[1:N,:,:] # removing the state z
-    dH.N -= 1
+    dH.N = N_ -1
+    dM.r = dM.r[1:dH.N,:,:] # removing the state z
+
     info("Train SDDP with $k states")
-    @time LB, UB, LB_c, AQ = sddp(dH, dM)
+    @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
     UBs[k] = UB
 
     #Simulate
-    input_file = string("../C++/input/",file_name,".csv")
-    r = readcsv(input_file,Float64)
-    r = reshape(r,N+1,T_l,Sc)
-    r = r[1:N,1:dH.T-1,:]
-    r = exp(r)-1
-    pk_r = readcsv(string(file,"_PK_r.csv"),Float64)'
-    pk_r = reshape(pk_r,dH.K,T_l,Sc)
-    pk_r = pk_r[:,1:dH.T-1,:]
     info("Simulating SDDP")
-    ret = zeros(Float64,Sc)
-    all = zeros(Float64,N+1,dH.T,Sc)
-    for i=1:Sc
-      x, x0, exp_ret = simulate(dH, dM, AQ, sp, r[:,:,i], pk_r[:,:,i] , x_ini_s[2:N+1], x_ini_s[1])
-      ret[i] = x0[end]+sum(x[:,end])-1
-      all[:,:,i] = vcat(x0',x)
+    ret_c = zeros(Float64,Sc)
+    all_c = zeros(Float64,dH.N+1,dH.T,Sc)
+    for s=1:Sc
+      states = predict(model,ln_ret[:,1:dH.T-1,s]')
+      x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[1:dH.N,1:dH.T-1,s], states)
+      ret_c[s] = x0[end]+sum(x[:,end])-1
+      all_c[:,:,s] = vcat(x0',x)
     end
-    MRets[k] = mean(ret)
-    info("Mean return simulation $(mean(ret))")
+    MRets[k] = mean(ret_c)
+    info("Mean return simulation $(MRets[k])")
 
     # Test t
     if k > 1
-      testt = OneSampleTTest(ret,last_ret)
+      testt = OneSampleTTest(ret_c,last_ret_c)
       PVals[k-1] = pvalue(testt)
       info("pvalue $(pvalue(testt)) with $k states")
       if DEBUG == true
         γ_srt = string(dH.γ)[3:end]
         c_srt = string(dH.c)[3:end]
-        writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)$(k)_all_.csv"),reshape(all,N+1,(dH.T)*Sc)')
-        writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)$(k)_ret.csv"),ret)
-        writecsv(string("./output/",file_name,"_$(γ_srt)$(c_srt)_table.csv"),hcat(UBs,MRets,PVals))
+        writecsv(string(output_dir,file_name,"_$(γ_srt)$(c_srt)$(k)_all_.csv"),reshape(all_c,dH.N+1,(dH.T)*Sc)')
+        writecsv(string(output_dir,file_name,"_$(γ_srt)$(c_srt)$(k)_ret.csv"),ret_c)
+        writecsv(string(output_dir,file_name,"_$(γ_srt)$(c_srt)_table.csv"),hcat(UBs,MRets,PVals))
       end
       if pvalue(testt) >= 0.05
         info("Fail to reject hypoteses with $k states. pvalue $(pvalue(testt))")
@@ -154,8 +149,8 @@ function beststate(dH::MSDDPData, file_name::AbstractString, file_dir::AbstractS
         break
       end
     end
-    last_ret = ret
-    last_all = all
+    last_ret_c = ret_c
+    last_all_c = all_c
     # If couldn't stabilize the returns put -1
     if k == 7
       best_k = -1
@@ -195,15 +190,19 @@ Max_It = 100
 γs = [0.001,0.003,0.006]
 cs = [0.005,0.01,0.02]
 
-file_name = "$(N)MS_120_$(Sc)"
+file_name = string("$(N)MS_120_$(Sc)",".csv")
+file_dir = "../../input/"
 
+
+file = string(file_dir,file_name)
+ret = readcsv(file, Float64)
+ret = reshape(ret,N+1,T_l,Sc)
 
 c = cs[2]
 γ = γs[2]
 
-dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-file_dir = "../C++/MS/output/"
-#sampleslhs(dH, file_name, file_dir)
+#dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+#sampleslhs(dH, ret, T_l, Sc)
 
 best_ks = zeros(Int64,length(γs),length(cs))
 # For each risk level (γ)
@@ -216,11 +215,11 @@ for i_γ = 1:length(γs)
     info("Start testes with γ = $(γ) and c = $(c)")
 
     dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-    file_dir = "../C++/MS/output/"
+    output_dir = "../../output/"
 
     dH.S = 500
-    best_ks[i_γ,i_c] = beststate(dH, file_name, file_dir)
-    writecsv(string("./output/",file_name,"_best_k.csv"),best_ks)
+    best_ks[i_γ,i_c] = beststate(dH, ret, T_l, Sc)
+    writecsv(string(output_dir,file_name,"_best_k.csv"),best_ks)
   end
 end
 
