@@ -14,23 +14,18 @@ function Base.info(msg)
 end
 =#
 
-function generateseriesMS(T::Int64,N::Int64,S::Int64,T_l::Int64)
-  σ = [0.002894	0.003532	0.00391	0.000115; 0.003532	0.004886	0.005712	0.000144; 0.00391	0.005712	0.007259	0.000163; 0.000115	0.000144	0.000163	0.0529]
-  norm = MvNormal(σ)
-  b_r = [ 0.0028 0.0049 0.0061]'
-  b_z = 0.9700
-  a_r  = [0.0053 0.0067 0.0067]'
-  a_z  = 0.0000
+function generateseriesMS(dF::Factors,T::Int64,N::Int64,S::Int64,T_l::Int64)
+  norm = MvNormal(dF.Σ)
 
   # Generate the series
   p = zeros(N+1,T,S)
   for s=1:S
-    p[N+1,1,s] = 0
+    p[N+1,1,s] = dF.a_z[1]
     for t=1:T
       sm = rand(norm)
-      p[1:N,t,s] = a_r + b_r*p[N+1,t,s] + sm[1:N]
+      p[1:N,t,s] = dF.a_r + dF.b_r*p[N+1,t,s] + sm[1:N]
       if t < T
-        p[N+1,t+1,s] = a_z + b_z*p[N+1,t,s] + sm[N+1]
+        p[N+1,t+1,s] = dF.a_z[1] + dF.b_z[1]*p[N+1,t,s] + sm[N+1]
       end
     end
   end
@@ -57,17 +52,15 @@ function sampleslhs(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int
   last_std = 10000.0
   last_mean = 10000.0
   best_samp = 0
-  N_ = dH.N
   for s=100:200:700
     dH.S = s
     max_it = 10
     UBs = SharedArray(Float64,max_it)
-    @sync @parallel for it=1:max_it #
-      dH.N = N_
-      dM, model = inithmm(reshape(ln_ret,N_,T_l*Sc)', dH, T_l, Sc)
+    @sync @parallel for it=1:max_it
+      #dM, model = inithmm(reshape(ln_ret,dH.N+1,T_l*Sc)', dH, T_l, Sc)
+      dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
 
       # HMM data
-      dH.N = N_ -1
       dM.r = dM.r[1:dH.N,:,:] # removing the state z
 
       info("Train SDDP with $s LHS samples")
@@ -92,7 +85,7 @@ function sampleslhs(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int
 end
 
 # Choose the number of sates for the HMM
-function beststate(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
+function beststate(dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
   max_state = 7
@@ -101,17 +94,13 @@ function beststate(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int6
   PVals = zeros(Float64,max_state)
   MRets = zeros(Float64,max_state)
   best_k = 0
-  N_ = dH.N
   ret_e = exp(ln_ret)-1
   for k=1:7
     dH.K = k
 
-    dH.N = N_
-    dM, model = inithmm(reshape(ln_ret, N_, T_l*Sc)', dH, T_l, Sc)
-
     # HMM data
-    dH.N = N_ -1
-    dM.r = dM.r[1:dH.N,:,:] # removing the state z
+    #dM, model = inithmm(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
+    dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
 
     info("Train SDDP with $k states")
     @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
@@ -122,7 +111,8 @@ function beststate(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int6
     ret_c = zeros(Float64,Sc)
     all_c = zeros(Float64,dH.N+1,dH.T,Sc)
     for s=1:Sc
-      states = predict(model,ln_ret[:,1:dH.T-1,s]')
+      #states = predict(model,ln_ret[:,1:dH.T-1,s]')
+      states = predict(model,y[:,1:dH.T-1,s]')
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[1:dH.N,1:dH.T-1,s], states)
       ret_c[s] = x0[end]+sum(x[:,end])-1
       all_c[:,:,s] = vcat(x0',x)
@@ -161,15 +151,22 @@ end
 
 
 
-
-
 DEBUG = true
-srand(12345)
+srand(123)
 T_s = 240
 N = 3
 Sc = 1000
 T_l = 120
-#generateseriesMS(T_s,N,Sc,T_l)
+# Factors
+Σ = [0.002894	0.003532	0.00391	-0.000115; 0.003532	0.004886	0.005712	-0.000144; 0.00391	0.005712	0.007259	-0.000163; -0.000115	-0.000144	-0.000163	0.0529]
+b_r = [ 0.0028; 0.0049; 0.0061]
+b_z = [0.9700]
+a_r  = [0.0053; 0.0067; 0.0072]
+a_z  = [0.0000]
+r_f = 1.00042
+
+dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
+#generateseriesMS(dF, T_s, N, Sc, T_l)# Only one
 
 #Parameters
 N = 3
@@ -187,7 +184,7 @@ GAPP = 1
 Max_It = 100
 α_lB = 0.9
 
-γs = [0.001,0.003,0.006]
+γs = [0.02,0.05,0.08]
 cs = [0.005,0.01,0.02]
 
 file_name = string("$(N)MS_120_$(Sc)",".csv")
@@ -201,7 +198,7 @@ ret = reshape(ret,N+1,T_l,Sc)
 c = cs[2]
 γ = γs[2]
 
-#dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+#dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 #sampleslhs(dH, ret, T_l, Sc)
 
 best_ks = zeros(Int64,length(γs),length(cs))
@@ -214,11 +211,11 @@ for i_γ = 1:length(γs)
     c = cs[i_c]
     info("Start testes with γ = $(γ) and c = $(c)")
 
-    dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+    dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
     output_dir = "../../output/"
 
     dH.S = 500
-    best_ks[i_γ,i_c] = beststate(dH, ret, T_l, Sc)
+    best_ks[i_γ,i_c] = beststate(dH, dF, ret, T_l, Sc)
     writecsv(string(output_dir,file_name,"_best_k.csv"),best_ks)
   end
 end

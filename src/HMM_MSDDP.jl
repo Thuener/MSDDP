@@ -1,15 +1,26 @@
 module HMM_MSDDP
 
-using MSDDP
-using LHS
-using PyCall
+using MSDDP, LHS
+using PyCall, Logging, Distributions
 @pyimport numpy as np
 @pyimport hmmlearn.hmm as hl_hmm
 
-export train_hmm, predict, inithmm
+#HMM_MSDDP
+export Factors
+export train_hmm, predict, inithmm, inithmm_onefactor
 #MSDDP
 export HMMData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
+
+
+type Factors
+  a_z::Array{Float64,1}
+  a_r::Array{Float64,1}
+  b_z::Array{Float64,1}
+  b_r::Array{Float64,1}
+  Σ::Array{Float64,2}
+  r_f::Float64
+end
 
 function train_hmm(data::Array{Float64,2}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
@@ -31,15 +42,22 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData)
   Sc=1
   return inithmm(ret, dH, T_l, Sc)
 end
+
 ## Uses HMM and LHS to populate HMMData for MSDDP
-function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64)
+function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=true)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
   lst = fill(T_l, Sc)
   model = train_hmm(ret,dH.K,lst)
 
-  # Use the high initial probabilities as the first state
-  max_prob, k_ini = findmax(model[:startprob_])
+  # Use conditional probability or unconditional probability
+	k_ini = (model[:predict](ret[1:T_l,:]) .+1)[end] # conditional probability
+	if pini_cond
+		# The high initial probabilities as the first state
+		prob_ini = model[:startprob_] # unconditional probability
+		max_prob, k_ini = findmax(prob_ini)
+	end
+
 
   # Transition matrix (K_t x K_(t+1))
   P_K = model[:transmat_]
@@ -52,12 +70,60 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64)
   for k = 1:dH.K
     μ = reshape(model[:means_][k,:],dH.N)
     Σ = reshape(model[:covars_][k,:,:], dH.N, dH.N)
+		debug("μ= ", μ)
     r[:,k,:] = lhsnorm(μ, Σ, dH.S, rando=false)'
   end
   r = exp(r)-1
 
   dM = HMMData( r, p_s, k_ini, P_K )
   return dM, model
+end
+
+function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=true)
+	np.random[:seed](rand(0:4294967295))
+
+  ## Train HMM with data
+	comp = 2
+  y = Array(Float64, comp, T_l-1, Sc)
+	# Uses z_{t+1} and z_t  in the HMM
+	for s = 1:Sc
+		y[:,:,s] = vcat(hcat(ret[end,:,s],0),hcat(0,ret[end,:,s]))[:,2:T_l]
+	end
+
+	lst = fill(T_l-1, Sc)
+  model = train_hmm(reshape(y, comp, (T_l-1)*Sc)',dH.K,lst)
+
+  # Use conditional probability or unconditional probability
+	k_ini = (model[:predict](y[:,1:(T_l-1)]') .+1)[end] # conditional probability
+	if pini_cond
+		# The high initial probabilities as the first state
+		prob_ini = model[:startprob_] # unconditional probability
+		max_prob, k_ini = findmax(prob_ini)
+	end
+
+  # Transition matrix (K_t x K_(t+1))
+  P_K = model[:transmat_]
+
+  # Conditional probabilities of each state for each scenario p(S|K)
+  p_s = ones(dH.S, dH.K)*1.0/dH.S
+
+  ## Use HMM for each state in LHS
+	norm = MvNormal(dF.Σ[1:dH.N,1:dH.N])
+  r = zeros(dH.N, dH.K, dH.S)
+	n_comp = 2 # only uses the second componet of the HMM (z_t)
+  for k = 1:dH.K
+		μ = reshape(model[:means_][k,:],n_comp)
+    Σ = reshape(model[:covars_][k,:,:], n_comp, n_comp)
+    zs = lhsnorm(μ, Σ, dH.S, rando=false)'
+		sm = rand(norm)
+		for s = 1:dH.S
+			r[:,k,s] = dF.a_r + dF.b_r*zs[n_comp,s] + sm - dF.r_f
+		end
+  end
+  r = exp(r)-1
+
+  dM = HMMData( r, p_s, k_ini, P_K )
+  return dM, model, y
 end
 
 end #HMM_MSDDP
