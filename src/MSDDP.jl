@@ -139,6 +139,12 @@ function createmodels(dH::MSDDPData, dM::HMMData, LP)
       AQ[t,k], sp[t,k] = createmodel(dH, dM, dM.P_K[k,:]', LP)
     end
   end
+
+  # Add cuts to T-1
+  for k = 1:dH.K
+    θ = getVar(AQ[dH.T-1,k],:θ)
+    @addConstraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
+  end
   return AQ, sp
 end
 
@@ -221,12 +227,6 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
   α = ones(dH.T,dH.K)
   β = ones(dH.N+1,dH.T,dH.K)
 
-  # Add cuts to T-1
-  for k = 1:dH.K
-    θ = getVar(AQ[dH.T-1,k],:θ)
-    @addConstraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
-  end
-
   # Add cuts to t < T-1
   for t = dH.T-2:-1:1
     for j = 1:dH.K
@@ -241,7 +241,7 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
 
       status = solve(Q)
       if status ≠ :Optimal
-        info(Q)
+        writeLP(Q,"prob.lp")
         error("Can't solve the problem status:",status)
       end
       b = getVar(Q,:b)
@@ -305,7 +305,8 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
   list_β = Array{Float64,3}[]
   UB_last = 9999999.0
   LB_conserv = 0.0
-  while abs(GAP) > dH.GAPP && UB > 1e-5
+  eps_UB = 1e-6
+  while abs(GAP) > dH.GAPP && UB > eps_UB
     It += 1
     tic()
     for s_f = 1:dH.S_FB
@@ -329,7 +330,7 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
       end
       UB = getObjectiveValue(AQ[1,dM.k_ini])
       debug("FO_forw = $FO_forward, UB = $UB, stabUB $(abs(UB/UB_last -1)*100)")
-      if abs(UB/UB_last -1)*100 < 1
+      if abs(UB/UB_last -1)*100 < 1 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100) 
         it_stable += 1
         if it_stable >= 5
           if dH.S_LB < 100*S_LB_Ini
@@ -367,7 +368,7 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
       if s_f >= S_LB_Ini
         LB_conserv = (mean(LB[1:s_f]) - quantile(Normal(),dH.α_lB) * std(LB[1:s_f])/sqrt(s_f))
         GAP = 100*(UB - LB_conserv)/UB
-        if GAP < dH.GAPP
+        if abs(GAP) < dH.GAPP
           LB = LB[1:s_f] # only return the LB that were used
           info("GAP LB $GAP is lower then $(dH.GAPP)")
           break
