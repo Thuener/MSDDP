@@ -106,26 +106,26 @@ end
 
 function createmodel(dH::MSDDPData, dM::HMMData, p_state, LP)
   Q = Model(solver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=LP))
-  @defVar(Q, u0 >= 0)
-  @defVar(Q, u[1:dH.N] >= 0)
-  @defVar(Q, b[1:dH.N] >= 0)
-  @defVar(Q, d[1:dH.N] >= 0)
-  @defVar(Q, z)
-  @defVar(Q, y[1:dH.K,1:dH.S] >= 0)
-  @defVar(Q, θ[1:dH.K,1:dH.S] <= dH.M)
+  @variable(Q, u0 >= 0)
+  @variable(Q, u[1:dH.N] >= 0)
+  @variable(Q, b[1:dH.N] >= 0)
+  @variable(Q, d[1:dH.N] >= 0)
+  @variable(Q, z)
+  @variable(Q, y[1:dH.K,1:dH.S] >= 0)
+  @variable(Q, θ[1:dH.K,1:dH.S] <= dH.M)
 
-  @setObjective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
+  @objective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
                   + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
 
-  caixa = @addConstraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
+  caixa = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
   ativos = Array(Int64,dH.N)
   for i = 1:dH.N
-    ativos[i] = @addConstraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
+    ativos[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
   end
-  risco =  @addConstraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
+  risco =  @constraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
                           + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
 
-  @addConstraint(Q, trunc[j = 1:dH.K, s = 1:dH.S], y[j,s] >= z - sum{dM.r[i,j,s]*u[i], i = 1:dH.N})
+  @constraint(Q, trunc[j = 1:dH.K, s = 1:dH.S], y[j,s] >= z - sum{dM.r[i,j,s]*u[i], i = 1:dH.N})
   sp = SubProbData( caixa, ativos, risco )
   return Q, sp
 end
@@ -142,8 +142,8 @@ function createmodels(dH::MSDDPData, dM::HMMData, LP)
 
   # Add cuts to T-1
   for k = 1:dH.K
-    θ = getVar(AQ[dH.T-1,k],:θ)
-    @addConstraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
+    θ = getvariable(AQ[dH.T-1,k],:θ)
+    @constraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
   end
   return AQ, sp
 end
@@ -191,30 +191,30 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     end
 
     # Evalute immediate benefit
-    b = getVar(Q,:b)
-    d = getVar(Q,:d)
-    u = getVar(Q,:u)
+    b = getvariable(Q,:b)
+    d = getvariable(Q,:d)
+    u = getvariable(Q,:u)
     p_state = dM.P_K[K_forward[t],:]'
-    @defExpr(B_imed, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
+    @expression(Q, B_imed, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
              + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} )*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S} )
 
-    FO_forward += getValue(B_imed)
+    FO_forward += getvalue(B_imed)
 
     # Update trials
-    u = getVar(Q,:u)
+    u = getvariable(Q,:u)
     for i = 1:dH.N
-      u_trial[i+1,t] = getValue(u[i])
-      x_trial[i,t+1] = (1+ret[i,t+1])*getValue(u[i])
+      u_trial[i+1,t] = getvalue(u[i])
+      x_trial[i,t+1] = (1+ret[i,t+1])*getvalue(u[i])
     end
-    u_trial[1,t] = getValue(getVar(Q,:u0))
+    u_trial[1,t] = getvalue(getvariable(Q,:u0))
 
     # If transactional cost is different from the optimization model
     if real_tc != 0.0
-      b = getVar(Q,:b)
-      d = getVar(Q,:d)
+      b = getvariable(Q,:b)
+      d = getvariable(Q,:d)
       x0_trial[t+1] = - sum((1+real_tc)*b) + sum((1-real_tc)*d) + x0_trial[t]
     else
-      x0_trial[t+1] = getValue(getVar(Q,:u0))
+      x0_trial[t+1] = getvalue(getvariable(Q,:u0))
     end
   end
 
@@ -244,10 +244,10 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
         writeLP(Q,"prob.lp")
         error("Can't solve the problem status:",status)
       end
-      b = getVar(Q,:b)
-      d = getVar(Q,:d)
-      u = getVar(Q,:u)
-      θ = getVar(Q,:θ)
+      b = getvariable(Q,:b)
+      d = getvariable(Q,:d)
+      u = getvariable(Q,:u)
+      θ = getvariable(Q,:θ)
 
 
       # Evalute custs
@@ -257,7 +257,7 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
         λ[i] = getDual(Q, subp.ativos[i])
       end
       π = getDual(Q, subp.risco)
-      FO = getObjectiveValue(Q)
+      FO = getobjectivevalue(Q)
       cuts[t+1,j] = Cut(λ0, λ, π, FO)
       α[t+1,j] =  cuts[t+1,j].FO - (cuts[t+1,j].λ0 + dH.γ*cuts[t+1,j].π)*x0_trial[t+1] -
       sum([(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*x_trial[i,t+1] for i = 1:dH.N])
@@ -272,10 +272,10 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
 end
 
 function addcut(dH::MSDDPData, dM::HMMData, Q, cuts, t, x0_trial, x_trial)
-  θ = getVar(Q,:θ)
-  u = getVar(Q,:u)
-  u0 = getVar(Q,:u0)
-  @addConstraint(Q,corte_js[j = 1:dH.K, s = 1:dH.S],
+  θ = getvariable(Q,:θ)
+  u = getvariable(Q,:u)
+  u0 = getvariable(Q,:u0)
+  @constraint(Q,corte_js[j = 1:dH.K, s = 1:dH.S],
       θ[j,s] <= cuts[t+1,j].FO + (cuts[t+1,j].λ0 + dH.γ*cuts[t+1,j].π)*(u0 - x0_trial[t+1]) +
       + sum{(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*((1+dM.r[i,j,s])*u[i] - x_trial[i,t+1]), i = 1:dH.N})
 end
@@ -328,9 +328,9 @@ function sddp( dH::MSDDPData, dM::HMMData ;LP=2, parallel=false, simuLB=false )
         writeLP(AQ[1,dM.k_ini],"prob.lp")
         error("Can't solve the problem status:",status)
       end
-      UB = getObjectiveValue(AQ[1,dM.k_ini])
+      UB = getobjectivevalue(AQ[1,dM.k_ini])
       debug("FO_forw = $FO_forward, UB = $UB, stabUB $(abs(UB/UB_last -1)*100)")
-      if abs(UB/UB_last -1)*100 < 1 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100) 
+      if abs(UB/UB_last -1)*100 < 1 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
         it_stable += 1
         if it_stable >= 5
           if dH.S_LB < 100*S_LB_Ini
