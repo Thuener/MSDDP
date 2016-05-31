@@ -25,7 +25,7 @@ function generateseriesMS(dF::Factors,T::Int64,N::Int64,S::Int64,T_l::Int64)
       sm = rand(norm)
       p[1:N,t,s] = dF.a_r + dF.b_r*p[N+1,t,s] + sm[1:N]
       if t < T
-        p[N+1,t+1,s] = dF.a_z[1] + dF.b_z[1]*p[N+1,t,s] + sm[N+1]
+        p[N+1,t+1,s] = dF.a_z[1] + dF.b_z[1]*p[N+1,t,s] + sm[N+1] - dF.r_f
       end
     end
   end
@@ -57,7 +57,7 @@ function sampleslhs(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int
     max_it = 10
     UBs = SharedArray(Float64,max_it)
     @sync @parallel for it=1:max_it
-      #dM, model = inithmm(reshape(ln_ret,dH.N+1,T_l*Sc)', dH, T_l, Sc)
+      #dM, model = inithmm_z(reshape(ln_ret,dH.N+1,T_l*Sc)', dH, T_l, Sc)
       dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
 
       # HMM data
@@ -95,11 +95,11 @@ function beststate(dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::In
   MRets = zeros(Float64,max_state)
   best_k = 0
   ret_e = exp(ln_ret)-1
-  for k=1:7
+  for k=1:max_state
     dH.K = k
 
     # HMM data
-    #dM, model = inithmm(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
+    #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
     dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
 
     info("Train SDDP with $k states")
@@ -163,7 +163,7 @@ b_r = [ 0.0028; 0.0049; 0.0061]
 b_z = [0.9700]
 a_r  = [0.0053; 0.0067; 0.0072]
 a_z  = [0.0000]
-r_f = 1.00042
+r_f = 0.00042
 
 dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
 #generateseriesMS(dF, T_s, N, Sc, T_l)# Only one
@@ -192,14 +192,14 @@ file_dir = "../../input/"
 
 
 file = string(file_dir,file_name)
-ret = readcsv(file, Float64)
-ret = reshape(ret,N+1,T_l,Sc)
+ln_ret = readcsv(file, Float64)
+ln_ret = reshape(ln_ret,N+1,T_l,Sc)
 
 c = cs[2]
 γ = γs[2]
 
 #dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-#sampleslhs(dH, ret, T_l, Sc)
+#sampleslhs(dH, ln_ret, T_l, Sc)
 
 best_ks = zeros(Int64,length(γs),length(cs))
 # For each risk level (γ)
@@ -215,7 +215,7 @@ for i_γ = 1:length(γs)
     output_dir = "../../output/"
 
     dH.S = 500
-    best_ks[i_γ,i_c] = beststate(dH, dF, ret, T_l, Sc)
+    best_ks[i_γ,i_c] = beststate(dH, dF, ln_ret, T_l, Sc)
     writecsv(string(output_dir,file_name,"_best_k.csv"),best_ks)
   end
 end
