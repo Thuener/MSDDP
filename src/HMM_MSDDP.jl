@@ -1,26 +1,16 @@
 module HMM_MSDDP
 
-using MSDDP, LHS
+using MSDDP, LHS, AR
 using PyCall, Logging, Distributions
 @pyimport numpy as np
 @pyimport hmmlearn.hmm as hl_hmm
 
 #HMM_MSDDP
-export Factors
 export train_hmm, score, predict, inithmm, inithmm_z, inithmm_onefactor
 #MSDDP
 export HMMData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
 
-
-type Factors
-  a_z::Array{Float64,1}
-  a_r::Array{Float64,1}
-  b_z::Array{Float64,1}
-  b_r::Array{Float64,1}
-  Σ::Array{Float64,2}
-  r_f::Float64
-end
 
 function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
@@ -139,7 +129,7 @@ function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_
   p_s = ones(dH.S, dH.K)*1.0/dH.S
 
   ## Use HMM for each state in LHS
-	norm = MvNormal(dF.Σ[1:dH.N,1:dH.N])
+	norm = MvNormal(dF.Σ)
   r = zeros(dH.N, dH.K, dH.S)
 	n_comp = 2 # only uses the second componet of the HMM (z_t)
   for k = 1:dH.K
@@ -147,7 +137,7 @@ function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_
     Σ = reshape(model[:covars_][k,:,:], n_comp, n_comp)
     zs = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for s = 1:dH.S
-      sm = rand(norm)
+      sm = rand(norm)[1:dH.N,1:dH.N]
 			r[:,k,s] = dF.a_r + dF.b_r*zs[n_comp,s] + sm - dF.r_f
 		end
   end
