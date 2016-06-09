@@ -7,7 +7,7 @@ using Logging
 using JLD
 
 export HMMData, MSDDPData
-export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
+export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport, createmodels
 
 #=
 function debug(msg)
@@ -51,9 +51,9 @@ type MSDDPData
 end
 
 type SubProbData
-  caixa::Int64
-  ativos::Array{Int64,1}
-  risco::Int64
+  cash::Int64
+  assets::Array{Int64,1}
+  risk::Int64
 end
 
 function Base.copy(source::Array{Model,2})
@@ -117,16 +117,16 @@ function createmodel(dH::MSDDPData, dM::HMMData, p_state, LP)
   @objective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
                   + sum{(sum{dM.r[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
 
-  caixa = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
-  ativos = Array(Int64,dH.N)
+  cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
+  assets = Array(Int64,dH.N)
   for i = 1:dH.N
-    ativos[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
+    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
   end
-  risco =  @constraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
+  risk =  @constraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
                           + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
 
   @constraint(Q, trunc[j = 1:dH.K, s = 1:dH.S], y[j,s] >= z - sum{dM.r[i,j,s]*u[i], i = 1:dH.N})
-  sp = SubProbData( caixa, ativos, risco )
+  sp = SubProbData( cash, assets, risk )
   return Q, sp
 end
 
@@ -178,10 +178,10 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     subp = sp[t,k]
     Q = AQ[t,k]
 
-    chgConstrRHS(Q, subp.caixa, x0_trial[t])
-    chgConstrRHS(Q, subp.risco, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+    chgConstrRHS(Q, subp.cash, x0_trial[t])
+    chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
     for i = 1:dH.N
-      chgConstrRHS(Q, subp.ativos[i], x_trial[i,t])
+      chgConstrRHS(Q, subp.assets[i], x_trial[i,t])
     end
     # Resolve subprob in time t
     status = solve(Q)
@@ -212,7 +212,9 @@ function forward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubPr
     if real_tc != 0.0
       b = getvariable(Q,:b)
       d = getvariable(Q,:d)
-      x0_trial[t+1] = - sum((1+real_tc)*b) + sum((1-real_tc)*d) + x0_trial[t]
+      b_v = getvalue(b)
+      d_v = getvalue(d)
+      x0_trial[t+1] = - sum((1.0+real_tc)*b_v) + sum((1.0-real_tc)*d_v) + x0_trial[t]
     else
       x0_trial[t+1] = getvalue(getvariable(Q,:u0))
     end
@@ -233,10 +235,10 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
       subp = sp[t+1,j]
       Q = AQ[t+1,j]
 
-      chgConstrRHS(Q, subp.caixa, x0_trial[t+1])
-      chgConstrRHS(Q, subp.risco, dH.γ*(sum(x_trial[:,t+1])+x0_trial[t+1]) )
+      chgConstrRHS(Q, subp.cash, x0_trial[t+1])
+      chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t+1])+x0_trial[t+1]) )
       for i = 1:dH.N
-        chgConstrRHS(Q, subp.ativos[i], x_trial[i,t+1])
+        chgConstrRHS(Q, subp.assets[i], x_trial[i,t+1])
       end
 
       status = solve(Q)
@@ -251,16 +253,15 @@ function backward(dH::MSDDPData, dM::HMMData, AQ::Array{Model,2}, sp::Array{SubP
 
 
       # Evalute custs
-      λ0 = getDual(Q, subp.caixa)
+      λ0 = getDual(Q, subp.cash)
       λ = zeros(dH.N)
       for i = 1:dH.N
-        λ[i] = getDual(Q, subp.ativos[i])
+        λ[i] = getDual(Q, subp.assets[i])
       end
-      π = getDual(Q, subp.risco)
+      π = getDual(Q, subp.risk)
       FO = getobjectivevalue(Q)
       cuts[t+1,j] = Cut(λ0, λ, π, FO)
-      α[t+1,j] =  cuts[t+1,j].FO - (cuts[t+1,j].λ0 + dH.γ*cuts[t+1,j].π)*x0_trial[t+1] -
-      sum([(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*x_trial[i,t+1] for i = 1:dH.N])
+      α[t+1,j] =  FO - (λ0 + dH.γ*π)*x0_trial[t+1] - sum([(λ[i] + dH.γ*π)*x_trial[i,t+1] for i = 1:dH.N])
       β[:,t+1,j] = vcat(λ0, λ) + dH.γ*π
     end
 

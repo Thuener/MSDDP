@@ -7,7 +7,7 @@ using PyCall, Logging, Distributions
 
 #HMM_MSDDP
 export Factors
-export train_hmm, predict, inithmm, inithmm_z, inithmm_onefactor
+export train_hmm, score, predict, inithmm, inithmm_z, inithmm_onefactor
 #MSDDP
 export HMMData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
@@ -22,10 +22,33 @@ type Factors
   r_f::Float64
 end
 
-function train_hmm(data::Array{Float64,2}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
+function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
-	model[:fit](data,lst)
+  if N == 1
+    data = (data')' # Has to be Array{Float64,2}
+   end
+   model[:fit](data,lst)
 	return model
+end
+
+function train_hmm{N}(data::Array{Float64,N}, n_states::Int64; cov_type="full",init_p="stmc")
+  if N > 1
+    model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
+  else
+    model = hl_hmm.GaussianHMM(n_components=n_states)
+  end
+	model[:fit]((data')') # Has to be Array{Float64,2}
+  return model
+end
+
+# Return the loglikelihood of the data
+function score(model, data)
+  model[:score]((data')') # Has to be Array{Float64,2}
+end
+
+# Return the loglikelihood of the data
+function score(model, data, lst::Array{Int64,1})
+  model[:score]((data')',lst) # Has to be Array{Float64,2}
 end
 
 function predict(model,data::Array{Float64,2})
@@ -52,15 +75,15 @@ function inithmm_z(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; 
   return dM, model
 end
 ## Uses HMM and LHS to populate HMMData for MSDDP
-function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=true)
+function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
   lst = fill(T_l, Sc)
-  model = train_hmm(ret,dH.K,lst)
+  model = train_hmm(ret, dH.K, lst)
 
   # Use conditional probability or unconditional probability
 	k_ini = (model[:predict](ret[1:T_l,:]) .+1)[end] # conditional probability
-	if pini_cond
+	if !pini_cond
 		# The high initial probabilities as the first state
 		prob_ini = model[:startprob_] # unconditional probability
 		max_prob, k_ini = findmax(prob_ini)
@@ -87,7 +110,7 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pi
   return dM, model
 end
 
-function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=true)
+function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
 
   ## Train HMM with data
@@ -99,11 +122,11 @@ function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_
 	end
 
 	lst = fill(T_l-1, Sc)
-  model = train_hmm(reshape(y, comp, (T_l-1)*Sc)',dH.K,lst)
+  model = train_hmm(reshape(y, comp, (T_l-1)*Sc)', dH.K, lst)
 
   # Use conditional probability or unconditional probability
 	k_ini = (model[:predict](y[:,1:(T_l-1)]') .+1)[end] # conditional probability
-	if pini_cond
+	if !pini_cond
 		# The high initial probabilities as the first state
 		prob_ini = model[:startprob_] # unconditional probability
 		max_prob, k_ini = findmax(prob_ini)
