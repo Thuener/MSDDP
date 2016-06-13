@@ -2,7 +2,8 @@ tests = ["lhs",
          "msddp",
          "hmm_msddp",
          "inputs",
-         "realsimulate"]
+         "realsimulate",
+         "sdp"]
 
 for t in tests
     fp = "$(t).jl"
