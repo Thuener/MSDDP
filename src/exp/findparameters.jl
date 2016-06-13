@@ -141,7 +141,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
 
 
       # Simulate with AR series
-      #ret_ar = generateseries_assets(dF, 240, 1, T_l)
+      #ret_ar = series_assets(dF, 240, 1, T_l)
       ret_ar = ret[1:dH.N,:,se]
       ret_ar = reshape(ret_ar,dH.N,T_l)
 
@@ -260,11 +260,11 @@ function slidingwindow(data::Array{Float64,2}, k::Int64)
   sum = 0
   its = 10
   comp = 2
-  train = reshape(generateseries_zs(dF, T, Sc, T_l), comp, Sc*(T_l-1))'
+  train = reshape(series_zs(dF, T, Sc, T_l), comp, Sc*(T_l-1))'
   lst = fill(T_l-1, Sc)
   model = train_hmm(train, k, lst)
   for i = 1:its
-    test  = reshape(generateseries_zs(dF, T, Sc, T_l), comp, Sc*(T_l-1))'
+    test  = reshape(series_zs(dF, T, Sc, T_l), comp, Sc*(T_l-1))'
     logll = score(model, test, lst)
     sum += logll
   end
@@ -334,7 +334,6 @@ a_z  = [0.0000]
 r_f = 0.00042
 
 dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
-#generateseriesMS(dF, T_s, N, Sc, T_l)# Only one
 
 #Parameters
 N = 3
@@ -355,6 +354,8 @@ Max_It = 100
 γs = [0.02,0.05,0.08]
 cs = [0.005,0.01,0.02]
 
+#series(dF, Sc, T_l, T_s)
+#p2 = reshape(p[:],N+1,120,1000)
 file_name = string("$(N)MS_120_$(Sc)",".csv")
 file_dir = "../../input/"
 
