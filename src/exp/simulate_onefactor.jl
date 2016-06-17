@@ -47,7 +47,7 @@ input_file = string(input_dir, file_name, ".csv")
 ln_ret = readcsv(input_file, Float64)
 ln_ret = reshape(ln_ret, N+1, T_l, Sc)
 ln_ret = ln_ret[1:N,:,:]
-ret = exp(ln_ret[1:N,:,:])-1
+ret = exp(ln_ret[1:N,:,:])-1 -dF.r_f
 
 # HMM data
 info("Train HMM")
@@ -85,7 +85,7 @@ for dH.T in Ts
 
       info("Simulating One Step...")
       for s=1:Sc
-        x, x0 = simulatesw(dH, dM, AQ, sp, ret[1:dH.N,1:dH_o.T-1,s], states[1:dH_o.T-1,s])
+        x, x0 = simulate(dH, dM, AQ, sp, ret[1:dH.N,1:dH_o.T-1,s], states[1:dH_o.T-1,s])
         ret_p[2,s] = x0[end]+sum(x[:,end])-1
       end
       dH.T = dH_o.T

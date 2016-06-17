@@ -26,7 +26,7 @@ function piecewise(w::Float64,B::Array{Float64,2},A::Array{Float64,1})
   return f2
 end
 
-function evafunc(dH::MSDDPData, dM::HMMData, α, β, t, k )
+function evafunc(dH::MSDDPData, dM::MKData, α, β, t, k )
   n_cuts = size(α,1)
   a = Array(Float64,n_cuts)
   b = Array(Float64,dH.N+1,n_cuts)

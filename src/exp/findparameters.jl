@@ -2,6 +2,7 @@ using HMM_MSDDP, AR
 using Distributions, HypothesisTests
 using Logging, ArgParse
 
+
 # Choose the number os samples for the LHS using standard deviation stabilization of the UB
 function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_std = 10000.0
@@ -44,19 +45,20 @@ end
 function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
-  samps = collect(250:250:1500)# TODO 1000
+  samps = collect(250:250:1000)
   len_samps = length(samps)
   UBs = zeros(Float64, len_samps)
   PVals = zeros(Float64, len_samps)
   MRets = zeros(Float64, len_samps)
   best_s = 0
-  ret_e = exp(ln_ret)-1
+  z = ln_ret[end,:,:]
+  ret_e = exp(ln_ret[1:dH.N,:,:])-1 -dF.r_f
 
   for i = 1:length(samps)
     dH.S=samps[i]
     # HMM data
     #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
-    dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
+    dM, model, y = inithmm_onefactor(z, dF, dH, T_l, Sc)
 
     info("Train SDDP with $(dH.S) samples")
     @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
@@ -69,7 +71,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factor
     for s=1:Sc
       #states = predict(model,ln_ret[:,1:dH.T-1,s]')
       states = predict(model,y[:,1:dH.T-1,s]')
-      x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[1:dH.N,1:dH.T-1,s], states)
+      x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[:,1:dH.T-1,s], states)
       ret_c[s] = x0[end]+sum(x[:,end])-1
       all_c[:,:,s] = vcat(x0',x)
     end
@@ -92,7 +94,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factor
         info("Fail to reject hypoteses with $(dH.S) states. pvalue $(pvalue(ttest))")
         dH.S = samps[i-1]
         best_s = dH.S
-        #break TODO
+        break
       end
     end
     last_ret_c = ret_c
@@ -111,7 +113,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
   PVals = zeros(Float64, max_state)
   MRets = zeros(Float64, 2, max_state)
   best_k = 0
-  ret = exp(ln_ret)-1
+  ret = exp(ln_ret)-1 - dF.r_f
   for k=1:max_state
     dH.K = k
     info("Simulating with $k states")
@@ -130,9 +132,10 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
       zs[1] = dF.a_z[1]
       for t = 1:T_l
         sm = rand(norm)
-  			ret_hmm[:,t] = dF.a_r + dF.b_r*zs[t] + sm[1:dH.N] - dF.r_f
+        ρ = dF.a_r + dF.b_r*zs[t] + sm[1:dH.N]
+  			ret_hmm[:,t] = exp(ρ)-1
+        ret_hmm[:,t] -= dF.r_f
       end
-      ret_hmm = exp(ret_hmm)-1
 
       # Simulate with HMM serie
       #ret_hmm = ones(dH.N,1)*maximum(ret_hmm,1)
@@ -196,7 +199,7 @@ function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
   PVals = zeros(Float64,max_state)
   MRets = zeros(Float64,max_state)
   best_k = 0
-  ret_e = exp(ln_ret)-1
+  ret_e = exp(ln_ret)-1 - dF.r_f
   for k=1:max_state
     dH.K = k
 
@@ -351,7 +354,7 @@ GAPP = 1
 Max_It = 100
 α_lB = 0.9
 
-γs = [0.02,0.05,0.08]
+γs = [0.05,0.1, 0.2,0.3]
 cs = [0.005,0.01,0.02]
 
 #series(dF, Sc, T_l, T_s)

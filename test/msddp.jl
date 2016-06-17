@@ -41,7 +41,7 @@ P_K = [0.97856492 0.00951288 0.05596537;
        0.00726958 0.98253836 0.01542020;
        0.01416550 0.00794877 0.92861443]'
 
-dM = HMMData( r, p, 1, P_K )
+dM = MKData( r, p, 1, P_K )
 
 LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.012190382057278354 1e-6
@@ -91,7 +91,7 @@ prob_ini = prob_ini/sum(prob_ini)
 P_K = rand(Uniform(),K,K)
 P_K = P_K./(sum(P_K,2)*ones(1,K))
 
-dM = HMMData( r, p, 1, P_K )
+dM = MKData( r, p, 1, P_K )
 
 LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.877159339801321 1e-6
@@ -120,7 +120,7 @@ prob_ini = prob_ini/sum(prob_ini)
 P_K = rand(Uniform(),K,K)
 P_K = P_K./(sum(P_K,2)*ones(1,K))
 
-dM = HMMData( r, p, 1, P_K )
+dM = MKData( r, p, 1, P_K )
 
 LB, UB = sddp(dH, dM)
 @test_approx_eq_eps std(LB) 0.5062476890564355 1e-6

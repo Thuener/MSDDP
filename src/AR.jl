@@ -16,50 +16,46 @@ end
 
 
 # Generate the z_t series
-function series_z(dF::Factors, T::Int64, S::Int64, T_l::Int64)
+function series_z(dF::Factors, T::Int64, S::Int64, T_max::Int64)
   N = length(dF.a_r)
-  ρ = series(dF, S, T_min, T_max)
+  ρ = series(dF, S, T_max)
   return ρ[N+1,:,:]
 end
 
 # Generate the z_{t+1} z_t series
-function series_zs(dF::Factors, S::Int64, T_min::Int64, T_max::Int64)
+function series_zs(dF::Factors, S::Int64, T_max::Int64)
 
-  z = series_z(dF, S, T_min, T_max)
-  y = Array(Float64, 2, T_l-1, S)
+  z = series_z(dF, S, T_max)
+  y = Array(Float64, 2, T_max-1, S)
   for s = 1:S
-		y[:,:,s] = vcat(hcat(z[:,s]',0),hcat(0,z[:,s]'))[:,2:T_l]
+		y[:,:,s] = vcat(hcat(z[:,s]',0),hcat(0,z[:,s]'))[:,2:T_max]
 	end
   return y
 end
 
 # Generate the risk assets series
-function series_assets(dF::Factors, S::Int64, T_min::Int64, T_max::Int64)
+function series_assets(dF::Factors, S::Int64, T_max::Int64)
   N = length(dF.a_r)
-  ρ = series(dF, S, T_min, T_max)
+  ρ = series(dF, S, T_max)
   return ρ[1:N,:,:]
 end
 
 # Generate the risk assets series and z_t
-function series(dF::Factors, S::Int64, T_min::Int64, T_max::Int64)
+function series(dF::Factors, S::Int64, T_max::Int64)
   norm = MvNormal(dF.Σ)
   N = length(dF.a_r)
 
   # Generate the series
-  p = zeros(N+1, T_max+1, S)
+  p = zeros(N+1, T_max, S)
   for s=1:S
     p[N+1,1,s] = dF.a_z[1]
-    for t=1:T_max
+    for t=1:T_max-1
       sm = rand(norm)
-      p[1:N,t+1,s] = dF.a_r + dF.b_r*p[N+1,t,s] + sm[1:N] .- dF.r_f
-      if t < T_max
-        p[N+1,t+1,s] = dF.a_z[1] + dF.b_z[1]*p[N+1,t,s] + sm[N+1]
-      end
+      p[1:N,t+1,s] = dF.a_r + dF.b_r*p[N+1,t,s] + sm[1:N]
+      p[N+1,t+1,s] = dF.a_z[1] + dF.b_z[1]*p[N+1,t,s] + sm[N+1]
     end
   end
-
-  # only uses converged data begin from T_min
-  return p[:,T_min+2:T_max+1,:]
+  return p
 end
 
 

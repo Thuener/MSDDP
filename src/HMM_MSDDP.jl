@@ -8,9 +8,27 @@ using PyCall, Logging, Distributions
 #HMM_MSDDP
 export train_hmm, score, predict, inithmm, inithmm_z, inithmm_onefactor
 #MSDDP
-export HMMData, MSDDPData
+export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
 
+
+function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
+			μ::Array{Float64,1}, σ::Array{Float64,1}; cov_type="full",init_p="")
+	μ_ = μ[1:n_states,:]
+	σ_ = σ[1:n_states,:,:]
+	debug("Before")
+	debug("μ_ ",μ_)
+	debug("σ_ ", σ_)
+	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,means_prior=μ_,covars_prior=σ_,
+		init_params=init_p)
+  data = (data')' # Has to be Array{Float64,2}
+
+  model[:fit](data,lst)
+	debug("After")
+	debug("μ ", model[:means_])
+	debug("σ ", model[:covars_])
+	return model
+end
 
 function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
@@ -41,6 +59,9 @@ function score(model, data, lst::Array{Int64,1})
   model[:score]((data')',lst) # Has to be Array{Float64,2}
 end
 
+function predict(model,data::Array{Float64,1})
+	predict(model,(data')')
+end
 function predict(model,data::Array{Float64,2})
 	samples = size(data,1)
 	states = Array(Int64,samples)
@@ -64,7 +85,7 @@ function inithmm_z(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; 
   dM.r = dM.r[1:dH.N,:,:]
   return dM, model
 end
-## Uses HMM and LHS to populate HMMData for MSDDP
+## Uses HMM and LHS to populate MKData for MSDDP
 function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
@@ -96,31 +117,18 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pi
   end
   r = exp(r)-1
 
-  dM = HMMData( r, p_s, k_ini, P_K )
+  dM = MKData( r, p_s, k_ini, P_K )
   return dM, model
 end
 
-function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=false)
+function inithmm_onefactor(z::Array{Float64,2}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64, μ, σ)
 	np.random[:seed](rand(0:4294967295))
 
-  ## Train HMM with data
-	comp = 2
-  y = Array(Float64, comp, T_l-1, Sc)
-	# Uses z_{t+1} and z_t  in the HMM
-	for s = 1:Sc
-		y[:,:,s] = vcat(hcat(ret[end,:,s],0),hcat(0,ret[end,:,s]))[:,2:T_l]
-	end
+  lst = fill(T_l, Sc)
+  model = train_hmm(reshape(z, (T_l)*Sc), dH.K, lst, μ, σ)
 
-	lst = fill(T_l-1, Sc)
-  model = train_hmm(reshape(y, comp, (T_l-1)*Sc)', dH.K, lst)
-
-  # Use conditional probability or unconditional probability
-	k_ini = (model[:predict](y[:,1:(T_l-1)]') .+1)[end] # conditional probability
-	if !pini_cond
-		# The high initial probabilities as the first state
-		prob_ini = model[:startprob_] # unconditional probability
-		max_prob, k_ini = findmax(prob_ini)
-	end
+  # Use z_0 =0
+	k_ini = (model[:predict](dF.a_z[1]) .+1)[1] # conditional probability
 
   # Transition matrix (K_t x K_(t+1))
   P_K = model[:transmat_]
@@ -131,20 +139,24 @@ function inithmm_onefactor(ret::Array{Float64,3}, dF::Factors, dH::MSDDPData, T_
   ## Use HMM for each state in LHS
 	norm = MvNormal(dF.Σ)
   r = zeros(dH.N, dH.K, dH.S)
-	n_comp = 2 # only uses the second componet of the HMM (z_t)
   for k = 1:dH.K
-		μ = reshape(model[:means_][k,:],n_comp)
-    Σ = reshape(model[:covars_][k,:,:], n_comp, n_comp)
-    zs = lhsnorm(μ, Σ, dH.S, rando=false)'
+		μ = model[:means_][k,:][:]
+    Σ = model[:covars_][k,:]
+    z_tp1 = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for s = 1:dH.S
-      sm = rand(norm)[1:dH.N,1:dH.N]
-			r[:,k,s] = dF.a_r + dF.b_r*zs[n_comp,s] + sm - dF.r_f
+      sm = rand(norm)
+			e = sm[1:dH.N]
+			v = sm[dH.N+1]
+			z_t = (z_tp1[s] - dF.a_z[1] - v)/dF.b_z[1]
+			ρ = dF.a_r + dF.b_r*z_t + e
+			# Transform ρ = ln(r) in return (r)
+			r[:,k,s] = exp(ρ)-1
+			# Discount risk free rate
+			r[:,k,s] -= dF.r_f
 		end
   end
-  r = exp(r)-1
-
-  dM = HMMData( r, p_s, k_ini, P_K )
-  return dM, model, y
+  dM = MKData( r, p_s, k_ini, P_K )
+  return dM, model
 end
 
 end #HMM_MSDDP

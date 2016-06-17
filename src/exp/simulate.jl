@@ -44,7 +44,7 @@ input_file = string("../C++/input/",file_name,".csv")
 r = readcsv(input_file,Float64)
 r = reshape(r,N+1,T_l,Se)
 r = r[1:N,1:dH.T-1,:]
-r = exp(r)-1
+r = exp(r)-1 -dF.r_f
 
 
 ret = zeros(Float64,5,dH.T-1)
