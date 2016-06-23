@@ -47,11 +47,11 @@ end
 
 
 function forward(dS::SDPData, u_l::Array{Float64,3}, z_l::Array{Float64,1}, zs::Array{Float64,1},
-    rets_tp1::Array{Float64,2}; real_tc=0.0)
+    rets_tp1::Array{Float64,2})
   W = 1.0
   all = Array(Float64,dS.N+1, dS.T-1)
   for t = 1:dS.T-1
-    slot = findslot(dS, zs[t], z_l)
+    slot = findslot(zs[t], z_l, dS.L)
     u = u_l[:,t,slot]
     all[2:dS.N+1,t] = (u[2:dS.N+1]*W).*(1+rets_tp1[:,t+1])
     all[1,t] = u[1]*W
@@ -61,8 +61,8 @@ function forward(dS::SDPData, u_l::Array{Float64,3}, z_l::Array{Float64,1}, zs::
 end
 
 # Find the slot which z belongs
-function findslot(dS::SDPData, z::Float64, z_l::Array{Float64,1})
-  for l = 1:dS.L-1
+function findslot(z::Float64, z_l::Array{Float64,1}, L::Int64)
+  for l = 1:L-1
     if z >= z_l[l] && z < z_l[l+1]
       if abs(z- z_l[l]) <= abs(z- z_l[l+1])
         return l
@@ -72,18 +72,18 @@ function findslot(dS::SDPData, z::Float64, z_l::Array{Float64,1})
     end
   end
   if z >= z_l[end]
-    return dS.L
+    return L
   end
 
   return 1
 end
 
 # Find the slot for each z_s
-function findslots(dS::SDPData, z_s::Array{Float64,1}, z_l::Array{Float64,1})
-  slots = Array(Int64,dS.S)
+function findslots(z_s::Array{Float64,1}, z_l::Array{Float64,1}, S::Int64, L::Int64)
+  slots = Array(Int64,S)
 
-  for s = 1:dS.S
-    slots[s] = findslot(dS, z_s[s], z_l )
+  for s = 1:S
+    slots[s] = findslot(z_s[s], z_l, L )
   end
 
   return slots
@@ -91,7 +91,7 @@ end
 
 function backward(dF::Factors, dS::SDPData, z_l::Array{Float64,1})
   u_l = Array(Float64, dS.N+1, dS.T, dS.L)
-  Q_l = Array(Float64, dS.T, dS.L)
+  Q_l = Array(Float64, dS.T-1, dS.L)
   # LHS
   e = lhsnorm(zeros(dS.N+1), dF.Σ, dS.S, rando=false)'
   p_s = ones(dS.S)*1/dS.S
@@ -110,7 +110,7 @@ function backward(dF::Factors, dS::SDPData, z_l::Array{Float64,1})
       end
       Q_s = Array(Float64, dS.S)
       if t+1 != dS.T
-        slots = findslots(dS, z_tp1, z_l)
+        slots = findslots(z_tp1, z_l, dS.S, dS.L)
         Q_s = vec(Q_l[t+1,slots])
       else
         Q_s = ones(dS.S)

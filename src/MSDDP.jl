@@ -8,6 +8,7 @@ using JLD
 
 export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport, createmodels
+export chgConstrRHS
 
 #=
 function debug(msg)

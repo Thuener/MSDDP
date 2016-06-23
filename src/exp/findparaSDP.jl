@@ -22,7 +22,7 @@ function bestsamples_ttest(output_dir)
     Ws = Array(Float64, Sc)
     for se = 1:Sc
       w, all = forward(dS, u_l, z_l, z[:,se], rets_[:,:,se])
-      Ws[se] = w-1
+      Ws[se] = w-1.0
     end
     MRets[i] = mean(Ws)
     info("Mean return simulation $(MRets[i])")
@@ -71,7 +71,7 @@ function beststate_ttest(dH, output_dir)
   for se = 1:Sc
     w, all = forward(dS, u_l, z_l, z[:,se], rets_[:,:,se])
     all_SDP[:,:,se] = hcat(x_ini,all)
-    Ws[se] = w-1
+    Ws[se] = w-1.0
   end
   MRets[2,1] = mean(Ws)
   γ_srt = string(dH.γ)[3:end]
@@ -163,7 +163,7 @@ else
   Logging.configure(level=Logging.INFO)
 end
 
-#srand(123) TODO 
+#srand(123) TODO
 T_max = 240
 N = 3
 Sc = 1000

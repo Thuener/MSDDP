@@ -30,7 +30,7 @@ ret_train = ret[start_train:start_train+n_rows_train-1,:]
 ret_test  = ret[start_train+n_rows_train:start_train+n_rows_train+n_rows_test,:]
 
 dM, model = inithmm(ret_train, dH)
-# TODO simulatesw is not working anymore
+
 LB, UB, LB_c, AQ, sp = sddp(dH, dM)
 
 k_test = predict(model,ret_test)
