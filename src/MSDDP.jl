@@ -19,12 +19,6 @@ function Base.info(msg)
   println("INFO: ",msg)
 end
 =#
-type Cut
-  λ0::Float64
-  λ::Array{Float64,1}
-  π::Float64
-  FO::Float64
-end
 
 type MKData
   r::Array{Float64,3}
@@ -131,7 +125,7 @@ function createmodel(dH::MSDDPData, dM::MKData, p_state, LP)
   return Q, sp
 end
 
-function createmodels(dH::MSDDPData, dM::MKData, LP)
+function createmodels(dH::MSDDPData, dM::MKData, LP=2)
   sp = Array(SubProbData,dH.T-1,dH.K)
   AQ = Array(Model,dH.T-1,dH.K)
 
@@ -226,7 +220,6 @@ end
 
 function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubProbData,2}, x_trial, x0_trial)
   # Initialize
-  cuts = Array(Cut,dH.T,dH.K)
   α = ones(dH.T,dH.K)
   β = ones(dH.N+1,dH.T,dH.K)
 
@@ -261,25 +254,23 @@ function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPr
       end
       π = getDual(Q, subp.risk)
       FO = getobjectivevalue(Q)
-      cuts[t+1,j] = Cut(λ0, λ, π, FO)
       α[t+1,j] =  FO - (λ0 + dH.γ*π)*x0_trial[t+1] - sum([(λ[i] + dH.γ*π)*x_trial[i,t+1] for i = 1:dH.N])
       β[:,t+1,j] = vcat(λ0, λ) + dH.γ*π
     end
 
     for k = 1:dH.K
-      addcut(dH, dM, AQ[t,k], cuts, t, x0_trial, x_trial)
+      addcut(dH, dM, AQ[t,k], α, β, t)
     end
   end
   return α, β
 end
 
-function addcut(dH::MSDDPData, dM::MKData, Q, cuts, t, x0_trial, x_trial)
+function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Float64,3}, t::Int64)
   θ = getvariable(Q,:θ)
   u = getvariable(Q,:u)
   u0 = getvariable(Q,:u0)
   @constraint(Q,corte_js[j = 1:dH.K, s = 1:dH.S],
-      θ[j,s] <= cuts[t+1,j].FO + (cuts[t+1,j].λ0 + dH.γ*cuts[t+1,j].π)*(u0 - x0_trial[t+1]) +
-      + sum{(cuts[t+1,j].λ[i] + dH.γ*cuts[t+1,j].π)*((1+dM.r[i,j,s])*u[i] - x_trial[i,t+1]), i = 1:dH.N})
+      θ[j,s] <= α[t+1,j] + β[1,t+1,j]*u0 + sum{β[i+1,t+1,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N})
 end
 
 function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
