@@ -98,11 +98,11 @@ function backward(dF::Factors, dO::OSData, z_l::Array{Float64,1}, Q_l::Array{Flo
   # LHS
   e = lhsnorm(zeros(dO.N+1), dF.Σ, dO.S, rando=false)'
   p_s = ones(dO.S)*1/dO.S
+  r = Array(Float64, dO.N, dO.S)
+  z_tp1 = Array(Float64, dO.S)
   for t = dO.T-1:-1:1
     info(" t = $t")
     for l = 1:dO.L
-      r = Array(Float64, dO.N, dO.S)
-      z_tp1 = Array(Float64, dO.S)
       for s = 1:dO.S
         ρ =  dF.a_r +dF.b_r*z_l[l] + e[1:dO.N,s]
         # Transform ρ = ln(r) in return (r)

@@ -95,11 +95,12 @@ function backward(dF::Factors, dS::SDPData, z_l::Array{Float64,1})
   # LHS
   e = lhsnorm(zeros(dS.N+1), dF.Σ, dS.S, rando=false)'
   p_s = ones(dS.S)*1/dS.S
+  Q_s = Array(Float64, dS.S)
+  z_tp1 = Array(Float64, dS.S)
   for t = dS.T-1:-1:1
     info(" t = $t")
     for l = 1:dS.L
       r = Array(Float64, dS.N, dS.S)
-      z_tp1 = Array(Float64, dS.S)
       for s = 1:dS.S
         ρ =  dF.a_r +dF.b_r*z_l[l] + e[1:dS.N,s]
         # Transform ρ = ln(r) in return (r)
@@ -108,7 +109,6 @@ function backward(dF::Factors, dS::SDPData, z_l::Array{Float64,1})
         r[:,s] -= dF.r_f
         z_tp1[s] = dF.a_z[1] +dF.b_z[1]*z_l[l] + e[dS.N+1,s]
       end
-      Q_s = Array(Float64, dS.S)
       if t+1 != dS.T
         slots = findslots(z_tp1, z_l, dS.S, dS.L)
         Q_s = vec(Q_l[t+1,slots])
