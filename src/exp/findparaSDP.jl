@@ -84,7 +84,7 @@ function beststate_ttest(dH, output_dir)
     #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_hmm*Sc)', dH, T_hmm, Sc)
     z_slothmm = splitequaly(k, z)
     v_hmm = dF.Σ[dH.N+1,dH.N+1]*ones(k)
-    dM, model = inithmm_onefactor(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
+    dM, model = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
 
     info("Train SDDP with $k states")
     @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
@@ -169,7 +169,7 @@ N = 3
 Sc = 1000
 T_hmm = 120
 
-# Parameters for Factors
+# Parameters for AR
 Σ = [0.002894	0.003532	0.00391	-0.000115; 0.003532	0.004886	0.005712	-0.000144; 0.00391	0.005712	0.007259	-0.000163; -0.000115	-0.000144	-0.000163	0.0529]
 b_r = [ 0.0028; 0.0049; 0.0061]
 b_z = [0.9700]
@@ -177,7 +177,7 @@ a_r  = [0.0053; 0.0067; 0.0072]
 a_z  = [0.0000]
 r_f = 0.00042
 
-dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
+dF = AR(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parameters for MSDDPData
 N = 3

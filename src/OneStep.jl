@@ -87,12 +87,12 @@ function forward(dO::OSData, H_l::Array{Model,2}, sp::Array{SubProbData,2}, z_l:
   return x_trial, x0_trial
 end
 
-function backward(dF::Factors, dO::OSData, z_l::Array{Float64,1})
+function backward(dF::ARData, dO::OSData, z_l::Array{Float64,1})
   Q_l = ones(Float64, dO.T, dO.L)
   return backward(dF, dO, z_l, Q_l)
 end
 
-function backward(dF::Factors, dO::OSData, z_l::Array{Float64,1}, Q_l::Array{Float64,2})
+function backward(dF::ARData, dO::OSData, z_l::Array{Float64,1}, Q_l::Array{Float64,2})
   H_l = Array(Model,dO.T-1,dO.L)
   sp = Array(SubProbData,dO.T-1,dO.L)
   # LHS

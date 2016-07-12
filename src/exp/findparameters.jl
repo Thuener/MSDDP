@@ -14,7 +14,7 @@ function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, 
     UBs = SharedArray(Float64,max_it)
     @sync @parallel for it=1:max_it
       #dM, model = inithmm_z(reshape(ln_ret,dH.N+1,T_l*Sc)', dH, T_l, Sc)
-      dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
+      dM, model, y = inithmm_ar(ln_ret, dF, dH, T_l, Sc)
 
       # HMM data
       dM.r = dM.r[1:dH.N,:,:] # removing the state z
@@ -42,7 +42,7 @@ end
 
 
 # Choose the number os samples for the LHS
-function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
+function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
   samps = collect(250:250:1000)
@@ -58,7 +58,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factor
     dH.S=samps[i]
     # HMM data
     #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
-    dM, model, y = inithmm_onefactor(z, dF, dH, T_l, Sc)
+    dM, model, y = inithmm_ar(z, dF, dH, T_l, Sc)
 
     info("Train SDDP with $(dH.S) samples")
     @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
@@ -107,7 +107,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factor
   return best_s
 end
 
-function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
+function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   ret_hmm_p_last = 0
   max_state = 20
   PVals = zeros(Float64, max_state)
@@ -119,7 +119,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
     info("Simulating with $k states")
     # HMM data
     #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
-    dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
+    dM, model, y = inithmm_ar(ln_ret, dF, dH, T_l, Sc)
 
     ret_hmm_p = zeros(Sc)
     ret_ar_p  = zeros(Sc)
@@ -190,7 +190,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
 end
 
 # Choose the number of sates for the HMM
-function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factors, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
+function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
   max_state = 7
@@ -205,7 +205,7 @@ function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::Factors,
 
     # HMM data
     #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_l*Sc)', dH, T_l, Sc)
-    dM, model, y = inithmm_onefactor(ln_ret, dF, dH, T_l, Sc)
+    dM, model, y = inithmm_ar(ln_ret, dF, dH, T_l, Sc)
 
     info("Train SDDP with $k states")
     @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
@@ -328,7 +328,7 @@ N = 3
 Sc = 1000
 T_l = 120
 
-# Factors
+# AR
 Σ = [0.002894	0.003532	0.00391	-0.000115; 0.003532	0.004886	0.005712	-0.000144; 0.00391	0.005712	0.007259	-0.000163; -0.000115	-0.000144	-0.000163	0.0529]
 b_r = [ 0.0028; 0.0049; 0.0061]
 b_z = [0.9700]
@@ -336,7 +336,7 @@ a_r  = [0.0053; 0.0067; 0.0072]
 a_z  = [0.0000]
 r_f = 0.00042
 
-dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
+dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 #Parameters
 N = 3

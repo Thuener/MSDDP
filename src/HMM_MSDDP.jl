@@ -6,7 +6,7 @@ using PyCall, Logging, Distributions
 @pyimport hmmlearn.hmm as hl_hmm
 
 #HMM_MSDDP
-export train_hmm, score, predict, inithmm, inithmm_z, inithmm_onefactor
+export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar
 #MSDDP
 export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
@@ -121,7 +121,7 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pi
   return dM, model
 end
 
-function inithmm_onefactor(z::Array{Float64,2}, dF::Factors, dH::MSDDPData, T_l::Int64, Sc::Int64, μ, σ)
+function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, Sc::Int64, μ, σ)
 	np.random[:seed](rand(0:4294967295))
 
   lst = fill(T_l, Sc)
@@ -149,7 +149,7 @@ function inithmm_onefactor(z::Array{Float64,2}, dF::Factors, dH::MSDDPData, T_l:
 			v = sm[dH.N+1]
 			z_t = (z_tp1[s] - dF.a_z[1] - v)/dF.b_z[1]
 			ρ = dF.a_r + dF.b_r*z_t + e
-			# Transform ρ = ln(r) in return (r)
+			# Transform ρ = ln(1+r) in return (r)
 			r[:,k,s] = exp(ρ)-1
 			# Discount risk free rate
 			r[:,k,s] -= dF.r_f

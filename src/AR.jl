@@ -1,11 +1,11 @@
-module AR
+module AR # Auto regressive model
 
 using Distributions
 
 export series_z, series_zs, series_assets, series
-export Factors
+export ARData
 
-type Factors
+type ARData
   a_z::Array{Float64,1}
   a_r::Array{Float64,1}
   b_z::Array{Float64,1}
@@ -16,14 +16,14 @@ end
 
 
 # Generate the z_t series
-function series_z(dF::Factors, T::Int64, S::Int64, T_max::Int64)
+function series_z(dF::ARData, T::Int64, S::Int64, T_max::Int64)
   N = length(dF.a_r)
   ρ = series(dF, S, T_max)
   return ρ[N+1,:,:]
 end
 
 # Generate the z_{t+1} z_t series
-function series_zs(dF::Factors, S::Int64, T_max::Int64)
+function series_zs(dF::ARData, S::Int64, T_max::Int64)
 
   z = series_z(dF, S, T_max)
   y = Array(Float64, 2, T_max-1, S)
@@ -34,14 +34,14 @@ function series_zs(dF::Factors, S::Int64, T_max::Int64)
 end
 
 # Generate the risk assets series
-function series_assets(dF::Factors, S::Int64, T_max::Int64)
+function series_assets(dF::ARData, S::Int64, T_max::Int64)
   N = length(dF.a_r)
   ρ = series(dF, S, T_max)
   return ρ[1:N,:,:]
 end
 
 # Generate the risk assets series and z_t
-function series(dF::Factors, S::Int64, T_max::Int64)
+function series(dF::ARData, S::Int64, T_max::Int64)
   norm = MvNormal(dF.Σ)
   N = length(dF.a_r)
 

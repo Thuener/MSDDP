@@ -89,7 +89,7 @@ function findslots(z_s::Array{Float64,1}, z_l::Array{Float64,1}, S::Int64, L::In
   return slots
 end
 
-function backward(dF::Factors, dS::SDPData, z_l::Array{Float64,1})
+function backward(dF::ARData, dS::SDPData, z_l::Array{Float64,1})
   u_l = Array(Float64, dS.N+1, dS.T, dS.L)
   Q_l = Array(Float64, dS.T-1, dS.L)
   # LHS
