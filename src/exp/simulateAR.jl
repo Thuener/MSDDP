@@ -1,6 +1,6 @@
 using MSDDP, HMM_MSDDP, AR
 import OneStep, SDP
-using Distributions, Logging, JuMP
+using Distributions, Logging, JuMP, CPLEX
 Logging.configure(level=Logging.DEBUG)
 
 srand(123)
@@ -8,14 +8,14 @@ T_max = 240
 Sc = 1000
 T_hmm = 120
 
-# Factors
+# AR
 Σ = [0.002894	0.003532	0.00391	-0.000115; 0.003532	0.004886	0.005712	-0.000144; 0.00391	0.005712	0.007259	-0.000163; -0.000115	-0.000144	-0.000163	0.0529]
 b_r = [ 0.0028; 0.0049; 0.0061]
 b_z = [0.9700]
 a_r  = [0.0053; 0.0067; 0.0072]
 a_z  = [0.0000]
 r_f = 0.00042
-dF = Factors(a_z, a_r, b_z, b_r, Σ, r_f)
+dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parmeters
 N = 3
@@ -29,7 +29,7 @@ M = 9999999
 γ = 0.002
 S_LB = 300
 S_FB = 100
-GAPP = 1
+GAPP = 3
 Max_It = 100
 α_lB = 0.9
 
@@ -44,9 +44,9 @@ dS = SDP.SDPData(N, T, L, S, α, γ)
 tic()
 γs = [0.05,0.1, 0.2,0.3] #0.6, 0.4,0.3,0.2, 0.1, 0.08, 0.05, 0.02, 0.01]
 cs = [0.005,0.01,0.02]
-Ts = [24]#,24,48]
+Ts = [48]#,24,48]
 
-output_dir = "../../output3/"
+output_dir = "../../output/"
 
 # Read series
 file_name = string("$(N)MS_$(T_max)_$(Sc)")
@@ -68,11 +68,68 @@ z_l = SDP.splitequaly(dS.L, z)
 info("Train HMM")
 z_slothmm = SDP.splitequaly(dH.K, z)
 v_hmm = dF.Σ[dH.N+1,dH.N+1]*ones(dH.K)
-dM, model = inithmm_onefactor(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
+dM, model = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
 
 states = Array(Int64,Ts[end],Sc)
 for se = 1:Sc
   states[:,se] = predict(model,z[1:Ts[end],se])
+end
+
+function memuse()
+  pid = parse(Int,readall(`pidof julia`))
+  return string(round(Int,parse(Int,readall(`ps -p $pid -o rss=`))/1024),"M")
+end
+
+function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
+  info("Memory use $(memuse())")
+  ############ MSDDP ###########
+  info("#### MSDDP ####")
+  info("Training MSDDP...")
+  @time LB, UB, LB_c, AQ, sp, list_α, list_β = sddp(dH, dM)
+
+  info("Simulating MSDDP...")
+  for se = 1:Sc
+    x, x0, exp_ret = simulate(dH, dM, AQ, sp, list_α, list_β, rets_[:,:,se], states[:,se])
+    ret_p[1,se] = x0[end]+sum(x[:,end])-1
+  end
+  info("Memory use $(memuse())")
+  LB =0; UB =0; LB_c =0; AQ =0; sp =0; list_α =0; list_β =0;
+  x  =0; x0  =0; exp_ret  =0;
+end
+
+function runOS(dF, dO, z_l, rets_, z, ret_p)
+  ############ One Step ############
+  info("#### One Step ####")
+  info("Training One Step...")
+  @time H_l, sp = OneStep.backward(dF, dO, z_l)
+
+  info("Simulating One Step...")
+  for se = 1:Sc
+    x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
+    ret_p[2,se] = x0[end]+sum(x[:,end])-1.0
+  end
+  info("Memory use $(memuse())")
+  H_l =0; sp =0; x =0; x0 =0;
+end
+
+function runOSFC(dF, dS, z_l, rets_, z, ret_p)
+  ############ One Step with future cost ############
+  # Run MSDDP with no costs
+  info("#### One Step FC ####")
+  info("Training One Step FC...")
+  dO.Mod = true
+  # Run SDP
+  @time u_l, Q_l = SDP.backward(dF, dS, z_l)
+  # Use in one-step
+  @time H_l, sp = OneStep.backward(dF, dO, z_l, Q_l)
+
+  info("Simulating One Step FC...")
+  for se = 1:Sc
+    x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
+    ret_p[3,se] = x0[end]+sum(x[:,end])-1.0
+  end
+  info("Memory use $(memuse())")
+  u_l =0; Q_l =0; H_l =0; sp =0; x =0; x0 =0;
 end
 
 for dH.T in Ts
@@ -86,44 +143,16 @@ for dH.T in Ts
       dH.c = dO.c = cs[i_c]
       ret_p = Array(Float64,3,Sc)
       info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
-      ############ MSDDP ###########
-      info("#### MSDDP ####")
-      info("Training MSDDP...")
-      @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
-
-      info("Simulating MSDDP...")
-      for se = 1:Sc
-        x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,se], states[:,se])
-        ret_p[1,se] = x0[end]+sum(x[:,end])-1
-      end
-
-      ############ One Step ############
+      runMSDDP(dH, dM, Sc, rets_, states, ret_p)
+      gc()
+      info("Memory use $(memuse())")
       dO.Mod = false
-      info("#### One Step ####")
-      info("Training One Step...")
-      H_l, sp = OneStep.backward(dF, dO, z_l)
-
-      info("Simulating One Step...")
-      for se = 1:Sc
-        x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
-        ret_p[2,se] = x0[end]+sum(x[:,end])-1.0
-      end
-      ############ One Step with future cost ############
-      # Run MSDDP with no costs
-      info("#### One Step FC ####")
-      info("Training One Step FC...")
-      dO.Mod = true
-      # Run SDP
-      u_l, Q_l = SDP.backward(dF, dS, z_l)
-      # Use in one-step
-      H_l, sp = OneStep.backward(dF, dO, z_l, Q_l)
-
-      info("Simulating One Step FC...")
-      for se = 1:Sc
-        x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
-        ret_p[3,se] = x0[end]+sum(x[:,end])-1.0
-      end
-
+      runOS(dF, dO, z_l, rets_, z, ret_p)
+      gc()
+      info("Memory use $(memuse())")
+      runOSFC(dF, dS, z_l, rets_, z, ret_p)
+      gc()
+      info("Memory use $(memuse())")
       for i = 1:3
         rets_p[i,i_γ,i_c] = mean(ret_p[i,:])
       end
