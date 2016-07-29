@@ -159,7 +159,7 @@ function simulatestates(dH::MSDDPData, dM::MKData, K_forward, r_forward)
 end
 
 function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
-    list_α::Array{Array{Float64,2},1}, list_β::Array{Array{Float64,3},1}, K_forward, ret; real_tc=0.0)
+    K_forward, ret; real_tc=0.0)
 
   # Initialize
   x_trial = zeros(dH.N,dH.T)
@@ -373,7 +373,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
       # Forward
       debug("Forward Step")
       simulatestates(dH, dM, K_forward, r_forward)
-      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, list_α, list_β, K_forward, r_forward)
+      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
 
       # Backward
       debug("Backward Step")
@@ -396,7 +396,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
       if abs(UB/UB_last -1)*100 < 0.5 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
         it_stable += 1
         if it_stable >= 5
-          if dH.S_LB < 100*S_LB_Ini
+          if dH.S_LB < 10*S_LB_Ini
             dH.S_LB = round(Int64,dH.S_LB*1.2)
             info("Increasing S_LB for $(dH.S_LB)")
             if parallel
@@ -425,7 +425,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     GAP = 100
     for s_f = 1:dH.S_LB #@sync @parallel TODO parallel not working
       simulatestates(dH, dM, K_forward, r_forward)
-      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, list_α, list_β, K_forward, r_forward)
+      x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
       LB[s_f] = FO_forward
       # Start testing after S_LB_Ini simulations
       if s_f >= S_LB_Ini
@@ -438,8 +438,9 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
           break
         end
 
-        if meanLB < UB
-          info("MeanLB $meanLB is lower than $(UB) UB using $s_f Forwards. Aborting LB evaluation.")
+        GAP_mean = 100*(UB - meanLB)/UB
+        if GAP_mean > dH.GAPP
+          info("GAP_mean $GAP_mean is higher than $(dH.GAPP) UB using $s_f Forwards. Aborting LB evaluation.")
           break
         end
       end
@@ -464,7 +465,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     write(file,"dM",dM)
     for s_f = 1:3
       simulatestates(dH, dM, K_forward_o, r_forward_o)
-      x_trial_o, x0_trial_o, FO_forward_o, u_trial_o = forward(dH, dM, AQ, sp, list_α, list_β, K_forward_o, r_forward_o; parallel=parallel)
+      x_trial_o, x0_trial_o, FO_forward_o, u_trial_o = forward(dH, dM, AQ, sp, K_forward_o, r_forward_o; parallel=parallel)
       write(file, "x$s_f", vcat(x0_trial_o',x_trial_o))
       write(file, "u$s_f", u_trial_o)
       write(file, "K$s_f", K_forward_o)
@@ -485,21 +486,19 @@ function simulate_stateprob(dH::MSDDPData, dM::MKData, AQ::Array{Model,2},sp::Ar
 end
 
 function simulate(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
-    list_α::Array{Array{Float64,2},1}, list_β::Array{Array{Float64,3},1},
     ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
   samps = size(ret_test,2)
   if samps != dH.T
     error("Return series has to have $(dH.T) and has $(samps) samples, use simulatesw if you want to really do that.")
   end
 
-  x, x0, exp_ret, u = forward(dH, dM, AQ, sp, list_α, list_β, k_test, ret_test, real_tc=real_tc)
+  x, x0, exp_ret, u = forward(dH, dM, AQ, sp, k_test, ret_test, real_tc=real_tc)
 
   return x, x0, exp_ret
 end
 
 # Simulate using sliding windows
 function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
-  list_α::Array{Array{Float64,2},1}, list_β::Array{Array{Float64,3},1},
   ret_test::Array{Float64,2}, k_test::Array{Int64,1}; real_tc=0.0)
    dH_ = deepcopy(dH)
    init_T = dH_.T
@@ -509,13 +508,11 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    all_x = dH_.x_ini
    all_x0 = dH_.x0_ini
 
-   r_forward = zeros(dH_.N,dH_.T)
-   K_forward_a = Array(Int64,dH_.T)
    for i = 1:its
      r_forward   = ret_test[:,(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
      K_forward_a =     k_test[(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
 
-     x, x0, expret, u = forward(dH_, dM, AQ, sp, list_α, list_β, K_forward_a, r_forward, real_tc=real_tc)
+     x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward, real_tc=real_tc)
      all_x = hcat(all_x,x[:,2:end])
      all_x0 = vcat(all_x0,x0[2:end])
      dH_.x_ini = x[:,end]
@@ -530,7 +527,7 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
      r_forward_a = ret_test[:,its*(dH_.T-1)+1:end]
      K_forward_a =     k_test[its*(dH_.T-1)+1:end]
      dH_.T = diff_t
-     x, x0, expret, u = forward(dH_, dM, AQ, sp, list_α, list_β, K_forward_a, r_forward_a, real_tc=real_tc)
+     x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward_a, real_tc=real_tc)
      dH_.T = init_T
      all_x = hcat(all_x,x[:,2:end])
      all_x0 = vcat(all_x0,x0[2:end])
@@ -539,28 +536,28 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    return all_x, all_x0
  end
 
-function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_ini::Array{Float64,1},
-    x_p::Array{Float64,1})
+function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_p::Array{Float64,1})
    T_test = size(ret_test,2)
-   x = Array(Float64,dH.N+1, T_test+1)
-   x[:,1] = x_ini
+   x = Array(Float64,dH.N+1, T_test)
+   x[:,1] = vcat(dH.x0_ini,dH.x_ini)
+   cost = 0.0
    for t = 2:T_test
-     # Evalute the return
-     for i = 2:dH.N+1
-       x[i,t] = (1+ret_test[i-1,t])*x[i,t-1]
-     end
-     x[1,t] = x[1,t-1]
-     total = sum(x[:,t])
-
-     # Adjust the portfolio and discount transaction costs
+     # Evaluate transaction costs
+     total = sum(x[:,t-1])
      cost = 0.0
      for i = 2:dH.N+1
-       cost += abs(x[i,t]-total*x_p[i])*dH.c
+       cost += abs(x[i,t-1]-total*x_p[i])*dH.c
        x[i,t] = total*x_p[i]
      end
      x[1,t] = total*x_p[1] - cost
+
+     # Evalute the return
+     for i = 2:dH.N+1
+       x[i,t] = (1+ret_test[i-1,t])*x[i,t]
+     end
+
    end
-   return x
+   return x[:,2:end]
  end
 
 end # SDDP Module

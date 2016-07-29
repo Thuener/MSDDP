@@ -1,12 +1,11 @@
 module HMM_MSDDP
-
-using MSDDP, LHS, AR
+using MSDDP, LHS, AR, FFM
 using PyCall, Logging, Distributions
 @pyimport numpy as np
 @pyimport hmmlearn.hmm as hl_hmm
 
 #HMM_MSDDP
-export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar
+export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm
 #MSDDP
 export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
@@ -33,9 +32,12 @@ end
 function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
   if N == 1
-    data = (data')' # Has to be Array{Float64,2}
-   end
-   model[:fit](data,lst)
+  	data = (data')' # Has to be Array{Float64,2}
+  end
+  model[:fit](data,lst)
+	debug("After")
+ 	debug("μ ", model[:means_])
+ 	debug("σ ", model[:covars_])
 	return model
 end
 
@@ -46,16 +48,23 @@ function train_hmm{N}(data::Array{Float64,N}, n_states::Int64; cov_type="full",i
     model = hl_hmm.GaussianHMM(n_components=n_states)
   end
 	model[:fit]((data')') # Has to be Array{Float64,2}
+	debug("After")
+ 	debug("μ ", model[:means_])
+ 	debug("σ ", model[:covars_])
   return model
 end
 
 # Return the loglikelihood of the data
-function score(model, data)
+function score(model, data::Array{Float64,1})
   model[:score]((data')') # Has to be Array{Float64,2}
 end
 
+function score(model, data::Array{Float64,2})
+  model[:score](data)
+end
+
 # Return the loglikelihood of the data
-function score(model, data, lst::Array{Int64,1})
+function score(model, data::Array{Float64,1}, lst::Array{Int64,1})
   model[:score]((data')',lst) # Has to be Array{Float64,2}
 end
 
@@ -153,6 +162,41 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
 			r[:,k,s] = exp(ρ)-1
 			# Discount risk free rate
 			r[:,k,s] -= dF.r_f
+		end
+  end
+  dM = MKData( r, p_s, k_ini, P_K )
+  return dM, model
+end
+
+function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
+	np.random[:seed](rand(0:4294967295))
+
+  model = train_hmm(ff, dH.K)
+
+	# Use conditional probability
+	k_ini = (model[:predict](ff) .+1)[end] # conditional probability
+
+  # Transition matrix (K_t x K_(t+1))
+  P_K = model[:transmat_]
+
+  # Conditional probabilities of each state for each scenario p(S|K)
+  p_s = ones(dH.S, dH.K)*1.0/dH.S
+
+  ## Use HMM for each state in LHS
+  r = zeros(dH.N, dH.K, dH.S)
+	samp_ϵ = Array(Float64,dH.N)
+  for k = 1:dH.K
+		μ = squeeze(model[:means_][k,:],1)
+    Σ = squeeze(model[:covars_][k,:,:],1)
+    z = lhsnorm(μ, Σ, dH.S, rando=false)'
+		for s = 1:dH.S
+			for i = 1:dH.N
+				samp_ϵ[i] = rand(dSI.ϵ[i])[1]
+			end
+			ρ = dSI.α + (dSI.β'*z[:,s]) + samp_ϵ
+
+			# Transform ρ = ln(1+r) in return (r)
+			r[:,k,s] = exp(ρ)-1
 		end
   end
   dM = MKData( r, p_s, k_ini, P_K )
