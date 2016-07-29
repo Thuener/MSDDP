@@ -5,7 +5,7 @@ import StatsBase
 
 
 # Choose the number os samples for the LHS using SDP
-function bestsamples_ttest(output_dir)
+function bestsamples_ttest(dS, output_dir, j)
   last_Ws = 0
   samps = collect(250:250:2500)
   len_samps = length(samps)
@@ -34,9 +34,9 @@ function bestsamples_ttest(output_dir)
       info("pvalue $(pvalue(ttest)) with $(dS.S) samples")
       γ_srt = string(dS.γ)[3:end]
       if DEBUG
-        writecsv(string(output_dir,file_name,"_$(γ_srt)$(dS.S)_ret.csv"), Ws)
+        writecsv(string(output_dir,file_name,"_$(γ_srt)$(dS.S)_ret$j.csv"), Ws)
       end
-      writecsv(string(output_dir,file_name,"_$(γ_srt)_table_samp.csv"),hcat(MRets,PVals))
+      writecsv(string(output_dir,file_name,"_$(γ_srt)_table_samp$j.csv"),hcat(MRets,PVals))
       if pvalue(ttest) >= 0.05
         info("Fail to reject hypoteses with $(dS.S) states. pvalue $(pvalue(ttest))")
         dS.S = samps[i-1]
@@ -54,7 +54,7 @@ function bestsamples_ttest(output_dir)
 end
 
 # Choose the number of sates for the HMM using SDP
-function beststate_ttest(dH, output_dir)
+function beststate_ttest(dH, dS, output_dir, j)
   max_state = 7
 
   UBs = zeros(Float64,max_state)
@@ -75,7 +75,7 @@ function beststate_ttest(dH, output_dir)
   end
   MRets[2,1] = mean(Ws)
   γ_srt = string(dH.γ)[3:end]
-  writecsv(string(output_dir,file_name,"_$(γ_srt)_SDP_all.csv"),reshape(all_SDP,dH.N+1,(dH.T)*Sc)')
+  writecsv(string(output_dir,file_name,"_$(γ_srt)_SDP_all$j.csv"),reshape(all_SDP,dH.N+1,(dH.T)*Sc)')
 
   for k=1:max_state
     dH.K = k
@@ -113,11 +113,11 @@ function beststate_ttest(dH, output_dir)
     PVals[k] = pvalue(ttest)
     info("pvalue $(pvalue(ttest)) with $k states")
     if DEBUG
-      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_all.csv"),reshape(all_c,dH.N+1,(dH.T)*Sc)')
-      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_ret.csv"),ret_c)
-      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_w.csv"),Ws)
+      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_all$j.csv"),reshape(all_c,dH.N+1,(dH.T)*Sc)')
+      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_ret$j.csv"),ret_c)
+      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_w$j.csv"),Ws)
     end
-    writecsv(string(output_dir,file_name,"_$(γ_srt)_table_states.csv"),hcat(UBs,MRets',PVals))
+    writecsv(string(output_dir,file_name,"_$(γ_srt)_table_states$j.csv"),hcat(UBs,MRets',PVals))
     if pvalue(ttest) >= 0.05
       info("Fail to reject hypoteses with $k states. pvalue $(pvalue(ttest))")
       best_k = dH.K
@@ -163,7 +163,7 @@ else
   Logging.configure(level=Logging.INFO)
 end
 
-#srand(123) TODO
+srand(123)
 T_max = 240
 N = 3
 Sc = 1000
@@ -177,7 +177,7 @@ a_r  = [0.0053; 0.0067; 0.0072]
 a_z  = [0.0000]
 r_f = 0.00042
 
-dF = AR(a_z, a_r, b_z, b_r, Σ, r_f)
+dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parameters for MSDDPData
 N = 3
@@ -222,30 +222,34 @@ z_l = splitequaly(dS.L, z)
 
 if args["samp"]
   bests_sam = zeros(Int64, length(γs))
-  # For each risk level (γ)
-  for i_γ = 1:length(γs)
-    dS.γ = γs[i_γ]
-    info("Start testes with γ = $(γ)")
-    output_dir = "../../output/"
+  for j = 1:20
+    # For each risk level (γ)
+    for i_γ = 1:length(γs)
+      dS.γ = γs[i_γ]
+      info("Start testes with γ = $(dS.γ)")
+      output_dir = "../../output4/"
 
-    bests_sam[i_γ] = bestsamples_ttest(output_dir)
-    writecsv(string(output_dir, file_name, "_best_S.csv"),bests_sam)
+      bests_sam[i_γ] = bestsamples_ttest(dS, output_dir, j)
+      writecsv(string(output_dir, file_name, "_best_S$(j).csv"),bests_sam)
+    end
   end
 end
 
 if args["stat"]
   best_ks = zeros(Int64,length(γs))
-  # For each risk level (γ)
-  for i_γ = 1:length(γs)
-    γ = γs[i_γ]
-    dS.γ = γ
-    info("Start testes with γ = $(γ)")
+  for j = 1:20
+    # For each risk level (γ)
+    for i_γ = 1:length(γs)
+      γ = γs[i_γ]
+      dS.γ = γ
+      info("Start testes with γ = $(dS.γ)")
 
-    dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-    output_dir = "../../output2/"
+      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+      output_dir = "../../output4/"
 
-    best_ks[i_γ] = beststate_ttest(dH, output_dir)
-    writecsv(string(output_dir, file_name, "_best_K.csv"),best_ks)
+      best_ks[i_γ] = beststate_ttest(dH, dS, output_dir, j)
+      writecsv(string(output_dir, file_name, "_best_K$(j).csv"),best_ks)
+    end
   end
 end
 

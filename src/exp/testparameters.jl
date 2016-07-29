@@ -15,7 +15,7 @@ x0_ini = 1.0
 c = 0.001
 M = 9999999#(1+maximum(r))^(T-1)*(sum(x_ini)+x0_ini)-(sum(x_ini)+x0_ini);
 γ = 1
-#Parâmetros
+#Parameters
 S_LB = 500
 S_FB = 5
 GAPP = -10 # GAP mínimo em porcentagem

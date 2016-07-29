@@ -1,6 +1,6 @@
 using MSDDP, HMM_MSDDP, AR
 import OneStep, SDP
-using Distributions, Logging, JuMP, CPLEX
+using Distributions, Logging
 Logging.configure(level=Logging.DEBUG)
 
 srand(123)
@@ -29,8 +29,8 @@ M = 9999999
 γ = 0.002
 S_LB = 300
 S_FB = 100
-GAPP = 3
-Max_It = 100
+GAPP = 1
+Max_It = 15
 α_lB = 0.9
 
 dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
@@ -42,9 +42,9 @@ dS = SDP.SDPData(N, T, L, S, α, γ)
 
 #########################################################################################################################
 tic()
-γs = [0.05,0.1, 0.2,0.3] #0.6, 0.4,0.3,0.2, 0.1, 0.08, 0.05, 0.02, 0.01]
+γs = [0.05,0.1, 0.2,0.3] #0.05,0.1, 0.2,0.3
 cs = [0.005,0.01,0.02]
-Ts = [48]#,24,48]
+Ts = [12]#,24,48]
 
 output_dir = "../../output/"
 
@@ -89,7 +89,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
 
   info("Simulating MSDDP...")
   for se = 1:Sc
-    x, x0, exp_ret = simulate(dH, dM, AQ, sp, list_α, list_β, rets_[:,:,se], states[:,se])
+    x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,se], states[:,se])
     ret_p[1,se] = x0[end]+sum(x[:,end])-1
   end
   info("Memory use $(memuse())")
@@ -164,4 +164,4 @@ for dH.T in Ts
 end
 toc()
 
-run(`/home/tas/woofy.sh 62491240 "onefactor"`)
+run(`/home/tas/woofy.sh 62491240 "simulateAR"`)

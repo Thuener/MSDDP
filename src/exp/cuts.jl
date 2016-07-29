@@ -53,7 +53,7 @@ x0_ini = 1.0
 c = 0.001
 M = 9999999#(1+maximum(r))^(T-1)*(sum(x_ini)+x0_ini)-(sum(x_ini)+x0_ini);
 γ = 1
-#Parâmetros
+#Parameters
 S_LB = 500
 S_FB = 5
 GAPP = 1 # GAP mínimo em porcentagem
@@ -76,7 +76,7 @@ for k = 1:size(γs,1)
     dM = readHMMPara(file, dH)
     dH.γ = γs[k]
     dH.S_LB = S_LB
-    LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial = sddp(dH, dM, simuLB=true)
+    LB, UB, LB_c, AQ, sp, list_α, list_β, x_trial, u_trial = sddp(dH, dM, simuLB=true)
     jldopen("./output/cuts_$(k)_G$(string(dH.γ)[3:end])_C$(string(dH.c)[3:end]).jld", "w") do file
       write(file, "u", u_trial)
       write(file, "x", x_trial)

@@ -3,7 +3,8 @@ using Distributions, HypothesisTests
 using Logging, ArgParse
 
 
-# Choose the number os samples for the LHS using standard deviation stabilization of the UB
+# Choose the number os samples for the LHS
+# using standard deviation stabilization of the UB
 function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_std = 10000.0
   last_mean = 10000.0
@@ -20,7 +21,7 @@ function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, 
       dM.r = dM.r[1:dH.N,:,:] # removing the state z
 
       info("Train SDDP with $s LHS samples")
-      @time LB, UB, LB_c, AQ, list_α, list_β, x_trial, u_trial, LB_c = sddp(dH, dM)
+      @time LB, UB, LB_c, AQ, sp, list_α, list_β, x_trial, u_trial, LB_c = sddp(dH, dM)
       UBs[it] = UB
     end
     curr_std = sqrt(var(UBs))
@@ -40,8 +41,8 @@ function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, 
   return best_samp
 end
 
-
 # Choose the number os samples for the LHS
+# when it stops to change the allocation (t-test)
 function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
@@ -107,6 +108,8 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData
   return best_s
 end
 
+# Choose the number of sates for the HMM
+# when it stops to change the allocation (UnequalVarianceTTest)
 function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   ret_hmm_p_last = 0
   max_state = 20
@@ -190,6 +193,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
 end
 
 # Choose the number of sates for the HMM
+# when it stops to change the allocation (t-test)
 function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, ln_ret::Array{Float64,3}, T_l::Int64, Sc::Int64)
   last_ret_c = 0
   last_all_c = 0
@@ -366,9 +370,6 @@ file_dir = "../../input/"
 file = string(file_dir,file_name)
 ln_ret = readcsv(file, Float64)
 ln_ret = reshape(ln_ret,N+1,T_l,Sc)
-
-c = cs[2]
-γ = γs[2]
 
 if args["stat"]
   best_ks = zeros(Int64,length(γs),length(cs))
