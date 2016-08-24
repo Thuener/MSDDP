@@ -1,4 +1,4 @@
-using MSDDP, HMM_MSDDP, AR
+using MSDDP, HMM_MSDDP, AR, Util
 import OneStep, SDP
 using Distributions, Logging
 Logging.configure(level=Logging.DEBUG)
@@ -73,11 +73,6 @@ dM, model = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v
 states = Array(Int64,Ts[end],Sc)
 for se = 1:Sc
   states[:,se] = predict(model,z[1:Ts[end],se])
-end
-
-function memuse()
-  pid = getpid()
-  return string(round(Int,parse(Int,readall(`ps -p $pid -o rss=`))/1024),"M")
 end
 
 function runMSDDP(dH, dM, Sc, rets_, states, ret_p)

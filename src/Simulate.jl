@@ -1,6 +1,6 @@
 module Simulate
 
-using MSDDP, HMM_MSDDP
+using MSDDP, HMM_MSDDP, Util
 using Distributions
 using Logging
 
@@ -8,11 +8,6 @@ import FFM
 export runMSDDP_TD_TC, runMSDDP_TD_NTC, runMyopic, runEqualy, runMSDDP_NTD_TC
 
 Logging.configure(level=Logging.DEBUG)
-
-function memuse()
-  pid = getpid()
-  return string(round(Int,parse(Int,readall(`ps -p $pid -o rss=`))/1024),"M")
-end
 
 
 function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; real_tc=0.0, myopic=false)
