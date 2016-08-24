@@ -9,7 +9,7 @@ function sampleslhs_stabUB(dH::MSDDPData, dFF::FFMData, ln_index::Array{Float64,
   last_std = 10000.0
   last_mean = 10000.0
   best_samp = 0
-  samps = collect(250:250:2000)
+  samps = collect(250:250:1500)
   len_samps = length(samps)
   MUBs = zeros(Float64, len_samps)
   STDUBs = zeros(Float64, len_samps)
@@ -46,7 +46,7 @@ function slidingwindow(dH::MSDDPData, dFF::FFMData, ln_index::Array{Float64,2})
   rows_lot = floor(Int64, perc*size(ln_index,2))
   total = floor(Int64, 1/perc)
   for i = lot_train:total-1
-    train = ln_index[:,rows_lot*(i-lot_train)+1:rows_lot*i]
+    train = ln_index[:,1:rows_lot*i]
     test  = ln_index[:,rows_lot*i+1:rows_lot*(i+1)]
     try
       dM, model = inithmm_ffm(train', dFF, dH)
@@ -60,7 +60,7 @@ end
 
 # Choose the number of sates for the HMM
 function beststate_slidingwindow(dH::MSDDPData, dFF::FFMData, ln_index::Array{Float64,2})
-  max_state = 5
+  max_state = 7
   best_k = 0
   max_logll = -Inf
   for k=1:max_state
@@ -111,7 +111,7 @@ end
 
 srand(123)
 #Parameters
-N = 25
+N = 30
 T = 12
 K = 1
 S = 1000
@@ -129,7 +129,7 @@ Max_It = 100
 # Read series
 F = 3
 file_dir = "../../input/"
-file_name = "3FF_BM25_Large"
+file_name = "3FF_Ind30_Daily"
 file = string(file_dir,file_name,".csv")
 series = readcsv(file, Float64)'
 #nrows_train = 84 #(2000 to 2006)
@@ -139,15 +139,12 @@ ln_index = ln_series[1:F,:]
 dFF = FFM.evaluate(ln_index,ln_series[F+1:end,:])
 
 
-γs = [0.03,0.08,0.1]
-cs = [0.005]
-
 if args["stat"]
   its = 10
   best_ks = Array(Float64,its)
   for i=1:its
     dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-    output_dir = "../../output3/"
+    output_dir = "../../output5/"
 
     best_ks[i] = beststate_slidingwindow(dH, dFF, ln_index)
     writecsv(string(output_dir, file_name, "_best_K.csv"), best_ks)
@@ -155,6 +152,9 @@ if args["stat"]
 end
 
 if args["samp"]
+  γs = [0.02,0.05,0.08,0.1,0.20]
+  cs = [0.005]
+  info(" γs = $(γs), cs = $(cs)")
   bests_sam = zeros(Int64, length(γs), length(cs))
   # For each risk level (γ)
   for i_γ = 1:length(γs)
@@ -166,7 +166,7 @@ if args["samp"]
       info("Start testes with γ = $(γ) and c = $(c)")
 
       dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-      output_dir = "../../output3/"
+      output_dir = "../../output5/"
 
       bests_sam[i_γ,i_c] = sampleslhs_stabUB(dH, dFF, ln_index, output_dir)
       writecsv(string(output_dir, file_name, "_best_S.csv"),bests_sam)

@@ -42,11 +42,11 @@ dS = SDP.SDPData(N, T, L, S, α, γ)
 
 #########################################################################################################################
 tic()
-γs = [0.05,0.1, 0.2,0.3] #0.05,0.1, 0.2,0.3
-cs = [0.005,0.01,0.02]
+γs = [0.05,0.1, 0.2,0.3]
+cs = [0.005,0.013,0.02]
 Ts = [12]#,24,48]
 
-output_dir = "../../output/"
+output_dir = "../../outputAR/"
 
 # Read series
 file_name = string("$(N)MS_$(T_max)_$(Sc)")
@@ -76,7 +76,7 @@ for se = 1:Sc
 end
 
 function memuse()
-  pid = parse(Int,readall(`pidof julia`))
+  pid = getpid()
   return string(round(Int,parse(Int,readall(`ps -p $pid -o rss=`))/1024),"M")
 end
 
@@ -135,13 +135,13 @@ end
 for dH.T in Ts
   dS.T = dO.T = dH.T
   rets_ = rets[:,1:dH.T,:]
-  rets_p = zeros(3,length(γs),length(cs))
+  rets_p = zeros(3*3,length(γs),length(cs))
   file = string(output_dir,file_name,"_$(dH.T)_table.csv")
   for i_γ = 1:length(γs)
     dH.γ = dS.γ = dO.γ = γs[i_γ]
     for i_c = 1:length(cs)
       dH.c = dO.c = cs[i_c]
-      ret_p = Array(Float64,3,Sc)
+      ret_p = SharedArray(Float64,3,Sc)
       info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
       runMSDDP(dH, dM, Sc, rets_, states, ret_p)
       gc()
@@ -154,7 +154,10 @@ for dH.T in Ts
       gc()
       info("Memory use $(memuse())")
       for i = 1:3
-        rets_p[i,i_γ,i_c] = mean(ret_p[i,:])
+        m = mean(ret_p[i,:])
+        rets_p[i,i_γ,i_c] = m
+        rets_p[i+3,i_γ,i_c] = m - (1.96 * std(ret_p[i,:]) / sqrt(Sc))
+        rets_p[i+6,i_γ,i_c] = m + (1.96 * std(ret_p[i,:]) / sqrt(Sc))
       end
       open(file,"a") do x
         writecsv(x,hcat(dH.c, dH.γ,rets_p[:,i_γ,i_c]'))

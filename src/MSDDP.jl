@@ -149,8 +149,8 @@ function simulatestates(dH::MSDDPData, dM::MKData, K_forward, r_forward)
 
   for t = 2:dH.T
     # Simulating states
-    prob_trans = squeeze(dM.P_K[K_forward[t-1],1:dH.K],1);
-    K_forward[t] = rand(Categorical(prob_trans));
+    prob_trans = squeeze(dM.P_K[K_forward[t-1],1:dH.K],1)
+    K_forward[t] = rand(Categorical(prob_trans))
 
     # Simulationg forward scenarios
     r_idx = rand(Categorical(dM.ps_j[1:dH.S,K_forward[t]]))
@@ -225,22 +225,18 @@ function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPr
   α = ones(dH.T,dH.K)
   β = ones(dH.N+1,dH.T,dH.K)
 
-  push!(list_α,α)
-  push!(list_β,β)
-
   # Add cuts to t < T-1
-  for t = dH.T-2:-1:1
+  for t = dH.T-1:-1:2
     for j = 1:dH.K
-      subp = sp[t+1,j]
-      Q = AQ[t+1,j]
+      subp = sp[t,j]
+      Q = AQ[t,j]
 
-      chgConstrRHS(Q, subp.cash, x0_trial[t+1])
-      chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t+1])+x0_trial[t+1]) )
+      chgConstrRHS(Q, subp.cash, x0_trial[t])
+      chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
       for i = 1:dH.N
-        chgConstrRHS(Q, subp.assets[i], x_trial[i,t+1])
+        chgConstrRHS(Q, subp.assets[i], x_trial[i,t])
       end
 
-      addcut(dH, dM, Q, list_α[end], list_β[end], t+1)
       status = solve(Q)
       if status ≠ :Optimal
        writeLP(Q,"prob.lp")
@@ -261,8 +257,12 @@ function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPr
       end
       π = getDual(Q, subp.risk)
       FO = getobjectivevalue(Q)
-      α[t+1,j] =  FO - (λ0 + dH.γ*π)*x0_trial[t+1] - sum([(λ[i] + dH.γ*π)*x_trial[i,t+1] for i = 1:dH.N])
-      β[:,t+1,j] = vcat(λ0, λ) + dH.γ*π
+      α[t,j] =  FO - (λ0 + dH.γ*π)*x0_trial[t] - sum([(λ[i] + dH.γ*π)*x_trial[i,t] for i = 1:dH.N])
+      β[:,t,j] = vcat(λ0, λ) + dH.γ*π
+    end
+
+    for k = 1:dH.K
+      addcut(dH, dM, AQ[t-1,k], α, β, t)
     end
   end
 end
@@ -272,71 +272,7 @@ function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Fl
   u = getvariable(Q,:u)
   u0 = getvariable(Q,:u0)
   @constraint(Q,corte_js[j = 1:dH.K, s = 1:dH.S],
-      θ[j,s] <= α[t+1,j] + β[1,t+1,j]*u0 + sum{β[i+1,t+1,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N})
-end
-
-function addviolconst(dH::MSDDPData, dM::MKData, Q,
-    list_α::Array{Array{Float64,2},1}, list_β::Array{Array{Float64,3},1}, t::Int64)
-  eps = 1e-6
-  if t == dH.T-1
-    status = solve(Q)
-    if status ≠ :Optimal
-      writeLP(Q,"prob.lp")
-      error("Can't solve the problem status:",status)
-    end
-    return
-  end
-
-  if length(list_α) == 0
-    status = solve(Q)
-    return
-  end
-
-  violation = true
-  add_const = 1
-  while violation
-    status = solve(Q)
-    if status ≠ :Optimal
-      writeLP(Q,"prob.lp")
-      error("Can't solve the problem status:",status)
-    end
-    # Evaluate violation
-    violation = false
-    for j = 1:dH.K
-      for s = 1:dH.S
-        min = typemax(Float64)
-        min_cut = 0
-        for cut = 1:length(list_α)
-          α = list_α[cut]
-          β = list_β[cut]
-
-          θ = getvariable(Q,:θ)
-          u = getvariable(Q,:u)
-          u0 = getvariable(Q,:u0)
-          @expression(Q, viol_js,
-              α[t+1,j] + β[1,t+1,j]*u0 + sum{β[i+1,t+1,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N} - θ[j,s])
-          viol = getvalue(viol_js)
-          if viol < min
-            min_cut = cut
-            min = viol
-          end
-        end
-        # Check if there is no more violated constraints
-        if min >= -eps
-          break
-        end
-        violation = true
-        # Add cut
-        α = list_α[min_cut]
-        β = list_β[min_cut]
-        θ = getvariable(Q,:θ)
-        u = getvariable(Q,:u)
-        u0 = getvariable(Q,:u0)
-        @constraint(Q,corte_js,
-            θ[j,s] <= α[t+1,j] + β[1,t+1,j]*u0 + sum{β[i+1,t+1,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N})
-      end
-    end
-  end
+      θ[j,s] <= α[t,j] + β[1,t,j]*u0 + sum{β[i+1,t,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N})
 end
 
 function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
@@ -344,8 +280,8 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   x_trial = []
   x0_trial = []
   u_trial = []
-  r_forward = zeros(dH.N,dH.T);
-  K_forward = Array(Int64,dH.T);
+  r_forward = zeros(dH.N,dH.T)
+  K_forward = Array(Int64,dH.T)
 
   AQ, sp = createmodels( dH, dM, LP )
 
@@ -384,7 +320,6 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
       k = dM.k_ini
       t = 1
       Q = AQ[t,k]
-      addcut(dH, dM, Q, list_α[end], list_β[end], t)
       status = solve(Q)
       if status ≠ :Optimal
        writeLP(Q,"prob.lp")
@@ -396,7 +331,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
       if abs(UB/UB_last -1)*100 < 0.5 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
         it_stable += 1
         if it_stable >= 5
-          if dH.S_LB < 10*S_LB_Ini
+          if dH.S_LB < 30*S_LB_Ini
             dH.S_LB = round(Int64,dH.S_LB*1.2)
             info("Increasing S_LB for $(dH.S_LB)")
             if parallel
@@ -404,8 +339,8 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
             else
               LB = Array(Float64,dH.S_LB)
             end
-            break
           end
+          break
         end
       else
         it_stable = 0
@@ -439,7 +374,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
         end
 
         GAP_mean = 100*(UB - meanLB)/UB
-        if GAP_mean > dH.GAPP
+        if GAP_mean > dH.GAPP && it_stable < 10
           info("GAP_mean $GAP_mean is higher than $(dH.GAPP) UB using $s_f Forwards. Aborting LB evaluation.")
           break
         end
@@ -458,8 +393,8 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   if simuLB
     file = jldopen("./output/allo_data_G$(string(dH.γ)[3:end])_C$(string(dH.c)[3:end]).jld", "w")
     debug("Evaluating the Lower Bound")
-    K_forward_o = Array(Int64,dH.T);
-    r_forward_o = zeros(dH.N,dH.T);
+    K_forward_o = Array(Int64,dH.T)
+    r_forward_o = zeros(dH.N,dH.T)
     addrequire(file, MSDDP)
     write(file,"dH",dH)
     write(file,"dM",dM)
@@ -478,7 +413,7 @@ end
 function simulate_stateprob(dH::MSDDPData, dM::MKData, AQ::Array{Model,2},sp::Array{SubProbData,2},
     ret_test::Array{Float64,2}, pk_r::Array{Float64,2}; real_tc=0.0)
 
-   k_test = Array(Int64,dH.T-1);
+   k_test = Array(Int64,dH.T-1)
    for t = 1:dH.T-1
      k_test[t] = findmax(pk_r[:,t])[2]
    end
