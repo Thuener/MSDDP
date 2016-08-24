@@ -220,7 +220,7 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
 end
 
 function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubProbData,2},
-    list_α::Array{Array{Float64,2},1}, list_β::Array{Array{Float64,3},1}, x_trial, x0_trial)
+     x_trial, x0_trial)
   # Initialize
   α = ones(dH.T,dH.K)
   β = ones(dH.N+1,dH.T,dH.K)
@@ -296,8 +296,6 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   end
   UB = 9999999.0
   it_stable = 0
-  list_α = Array{Float64,2}[]
-  list_β = Array{Float64,3}[]
   UB_last = 9999999.0
   LB_conserv = 0.0
   eps_UB = 1e-6
@@ -313,7 +311,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
 
       # Backward
       debug("Backward Step")
-      backward(dH, dM, AQ, sp, list_α, list_β, x_trial, x0_trial)
+      backward(dH, dM, AQ, sp, x_trial, x0_trial)
 
 
       # Evaluate upper bound
@@ -407,7 +405,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     end
   end
   dH.S_LB = S_LB_Ini
-  return LB, UB, LB_conserv, AQ, sp, list_α, list_β, vcat(x0_trial',x_trial), u_trial
+  return LB, UB, LB_conserv, AQ, sp, vcat(x0_trial',x_trial), u_trial
 end
 
 function simulate_stateprob(dH::MSDDPData, dM::MKData, AQ::Array{Model,2},sp::Array{SubProbData,2},

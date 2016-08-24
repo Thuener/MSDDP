@@ -85,7 +85,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
   ############ MSDDP ###########
   info("#### MSDDP ####")
   info("Training MSDDP...")
-  @time LB, UB, LB_c, AQ, sp, list_α, list_β = sddp(dH, dM)
+  @time LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
 
   info("Simulating MSDDP...")
   for se = 1:Sc
@@ -93,7 +93,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
     ret_p[1,se] = x0[end]+sum(x[:,end])-1
   end
   info("Memory use $(memuse())")
-  LB =0; UB =0; LB_c =0; AQ =0; sp =0; list_α =0; list_β =0;
+  LB =0; UB =0; LB_c =0; AQ =0; sp =0;
   x  =0; x0  =0; exp_ret  =0;
 end
 

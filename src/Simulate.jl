@@ -36,7 +36,7 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     #TODO dM, model = inithmm(lnret_train',dH) #TODO lnret_train[F+1:end,:]
     dM, model = inithmm_ffm(lnret_train[1:F,:]', dFF, dH)
 
-    B, UB, LB_c, AQ, sp, list_α, list_β, x_trial, u_trial = sddp(dH, dM)
+    B, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
 
     info("Simulating $i of $its memuse $(memuse())")
     if myopic
@@ -53,7 +53,7 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     end
     dH.x_ini = all_x[2:end,end]
     dH.x0_ini = all_x[1,end]
-    writecsv(string(output_dir,file_name,"R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all_x)
+    writecsv(string(output_dir,file_name,"R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all_x')
   end
   return all_x
 end
@@ -63,7 +63,7 @@ function runMSDDP_TD_TC(dH, series, nrows_train, F, R, output_dir, file_name)
   all = rollinghorizon(dH, series, nrows_train, F, R, output_dir, string(file_name,"_SDDP_TD_TC_"))
   ret = sum(all,1)
 
-  writecsv(string(output_dir,file_name,"_SDDP_TD_TC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all)
+  writecsv(string(output_dir,file_name,"_SDDP_TD_TC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all')
   return ret
 end
 
@@ -74,7 +74,7 @@ function runMSDDP_TD_NTC(dH, series, nrows_train, F, R, output_dir, file_name)
   @time all = rollinghorizon(dH, series, nrows_train, F, R, output_dir, string(file_name,"_SDDP_TD_NTC_"); real_tc=c)
   ret = sum(all,1)
 
-  writecsv(string(output_dir,file_name,"_SDDP_TD_NTC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all)
+  writecsv(string(output_dir,file_name,"_SDDP_TD_NTC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all')
   return ret
 end
 
@@ -83,7 +83,7 @@ function runMyopic(dH, series, nrows_train, F, R, output_dir, file_name)
   @time all = rollinghorizon(dH, series, nrows_train, F, R, output_dir, string(file_name,"_SDDP_My_"); myopic=true)
 
   ret = sum(all,1)
-  writecsv(string(output_dir,file_name,"_SDDP_My_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all)
+  writecsv(string(output_dir,file_name,"_SDDP_My_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all')
   return ret
 end
 
@@ -105,7 +105,7 @@ function runMSDDP_NTD_TC(dH, series, nrows_train, F, R, output_dir, file_name)
   @time all = rollinghorizon(dH, series, nrows_train, F, R, output_dir, string(file_name,"_SDDP_NTD_TC_"))
   ret = sum(all,1)
 
-  writecsv(string(output_dir,file_name,"_SDDP_NTD_TC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all)
+  writecsv(string(output_dir,file_name,"_SDDP_NTD_TC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all')
   return ret
 end
 end

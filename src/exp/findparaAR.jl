@@ -21,7 +21,7 @@ function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, 
       dM.r = dM.r[1:dH.N,:,:] # removing the state z
 
       info("Train SDDP with $s LHS samples")
-      @time LB, UB, LB_c, AQ, sp, list_α, list_β, x_trial, u_trial, LB_c = sddp(dH, dM)
+      @time LB, UB, LB_c, AQ, sp, x_trial, u_trial, LB_c = sddp(dH, dM)
       UBs[it] = UB
     end
     curr_std = sqrt(var(UBs))
