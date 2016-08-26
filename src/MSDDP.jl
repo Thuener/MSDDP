@@ -10,16 +10,6 @@ export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport, createmodels
 export chgConstrRHS
 
-#=
-function debug(msg)
-  println("DEBUG: ",msg)
-end
-
-function Base.info(msg)
-  println("INFO: ",msg)
-end
-=#
-
 type MKData # Markov Data
   r::Array{Float64,3}
   ps_j::Array{Float64,2}
@@ -243,12 +233,6 @@ function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPr
        error("Can't solve the problem status:",status)
       end
 
-      b = getvariable(Q,:b)
-      d = getvariable(Q,:d)
-      u = getvariable(Q,:u)
-      θ = getvariable(Q,:θ)
-
-
       # Evalute custs
       λ0 = getDual(Q, subp.cash)
       λ = zeros(dH.N)
@@ -436,11 +420,10 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    dH_ = deepcopy(dH)
    init_T = dH_.T
    T_test = size(ret_test,2)
-   its=floor(Int,(T_test)/(dH_.T-1))
+   its=floor(Int,(T_test-1)/(dH_.T-1))
 
    all_x = dH_.x_ini
    all_x0 = dH_.x0_ini
-
    for i = 1:its
      r_forward   = ret_test[:,(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
      K_forward_a =     k_test[(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
@@ -453,7 +436,7 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    end
 
    # Simulate last periods
-   diff_t = round(Int, T_test - its*(dH_.T-1))
+   diff_t = round(Int, T_test - (its*(dH_.T-1)+1))
    if diff_t > 0
      r_forward_a = zeros(dH_.N,diff_t)
      K_forward_a = Array(Int64,diff_t)
