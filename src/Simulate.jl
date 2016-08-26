@@ -31,12 +31,13 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     #TODO dM, model = inithmm(lnret_train',dH) #TODO lnret_train[F+1:end,:]
     dM, model = inithmm_ffm(lnret_train[1:F,:]', dFF, dH)
 
-    B, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+    LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
 
     info("Simulating $i of $its memuse $(memuse())")
+    states = predict(model,lnret_test[1:F,:]')
     if myopic
-      all = simulate_percport(dH, ret_test[F+1:end,:], u_trial[:,1]/sum(u_trial[:,1]))
-      all_x = hcat(all_x,all[:,1:end])
+      all = simulatesw(dH, dM, AQ, sp, ret_test[F+1:end,:], states; real_tc=real_tc)
+      all_x = hcat(all_x,all)
     else
       dH.T = R+1
       #TODO states = predict(model,lnret_test') #TODO ret_test[F+1:end,:]
