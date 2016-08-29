@@ -28,7 +28,6 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     lnret_train = log(ret_train+1)
     lnret_test = log(ret_test+1)
     dFF = FFM.evaluate(lnret_train[1:F,:],lnret_train[F+1:end,:])
-    #TODO dM, model = inithmm(lnret_train',dH) #TODO lnret_train[F+1:end,:]
     dM, model = inithmm_ffm(lnret_train[1:F,:]', dFF, dH)
 
     LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
@@ -40,7 +39,6 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
       all_x = hcat(all_x,all)
     else
       dH.T = R+1
-      #TODO states = predict(model,lnret_test') #TODO ret_test[F+1:end,:]
       states = predict(model,lnret_test[1:F,:]')
       debug("States $(states)")
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_test[F+1:end,:], states; real_tc=real_tc)
@@ -88,7 +86,6 @@ function runEqualy(dH, series, nrows_train, F, output_dir, file_name)
 
   info("Simulating")
   @time  all = simulate_percport(dH, series[F+1:end,nrows_train:end], ones(dH.N+1)*1/(dH.N+1))
-  all = hcat(vcat(dH.x0_ini,dH.x_ini),all)
   ret = sum(all,1)
 
   writecsv(string(output_dir,file_name,"_SDDP_Eq_all.csv"),all)

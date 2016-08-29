@@ -121,3 +121,9 @@ LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
 x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
 @test_approx_eq_eps x0 [1.0,0.0,0.0,0.0,0.0,0.0] 1e-3
 @test_approx_eq_eps sum(x,1) [0.0 1.010999999961244 1.100675699952306 1.1116824570038912 1.0811111894249712 0.9422965127138037] 1e-3
+
+dH.T = 2
+LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
+x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
+@test_approx_eq_eps x0 [1.0,0.0,0.0,0.0,0.0,0.0] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0  1.011  1.10068  1.11168  1.08111  0.942297] 1e-3

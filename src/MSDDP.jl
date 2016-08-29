@@ -1,6 +1,6 @@
 module MSDDP
 
-using JuMP, CPLEX
+using JuMP, CPLEX, Util
 using Distributions
 using MathProgBase
 using Logging
@@ -268,6 +268,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   K_forward = Array(Int64,dH.T)
 
   AQ, sp = createmodels( dH, dM, LP )
+  quatil = quantile(Normal(),dH.α_lB)
 
   GAP = 100.0
   It = 0
@@ -289,12 +290,12 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     tic()
     for s_f = 1:dH.S_FB
       # Forward
-      debug("Forward Step")
+      debug("Forward Step memuse $(memuse())")
       simulatestates(dH, dM, K_forward, r_forward)
       x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
 
       # Backward
-      debug("Backward Step")
+      debug("Backward Step memuse $(memuse())")
       backward(dH, dM, AQ, sp, x_trial, x0_trial)
 
 
@@ -337,17 +338,28 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     end
 
     # Lower bound
-    debug("Evaluating the Lower Bound")
+    debug("Evaluating the Lower Bound memuse $(memuse())")
     LB_conserv = 0
     GAP = 100
-    for s_f = 1:dH.S_LB #@sync @parallel TODO parallel not working
+    sumLB =0
+    for s_f = 1:dH.S_LB
       simulatestates(dH, dM, K_forward, r_forward)
       x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
       LB[s_f] = FO_forward
+      sumLB += FO_forward
       # Start testing after S_LB_Ini simulations
+      if s_f >= S_LB_Ini/3
+        meanLB = sumLB/s_f
+        GAP_mean = 100*(UB - meanLB)/UB
+        if GAP_mean > dH.GAPP*3 && it_stable < 10
+          info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) UB using $s_f Forwards. Aborting LB evaluation.")
+          break
+        end
+      end
+
       if s_f >= S_LB_Ini
-        meanLB = mean(LB[1:s_f])
-        LB_conserv = (meanLB - quantile(Normal(),dH.α_lB) * std(LB[1:s_f])/sqrt(s_f))
+        meanLB = sumLB/s_f
+        LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
         GAP = 100*(UB - LB_conserv)/UB
         if abs(GAP) < dH.GAPP
           LB = LB[1:s_f] # only return the LB that were used
@@ -365,8 +377,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
 
     time_it = toq()
     info("LB = $LB_conserv, UB = $UB, GAP(%) = $GAP, Time_it: $time_it")
-
-    if It > dH.Max_It
+    if It >= dH.Max_It
       info("Maximum number of iterations exceeded")
       break
     end
@@ -436,13 +447,13 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    end
 
    # Simulate last periods
-   diff_t = round(Int, T_test - (its*(dH_.T-1)+1))
+   diff_t = round(Int, T_test-1 - (its*(dH_.T-1)))
    if diff_t > 0
      r_forward_a = zeros(dH_.N,diff_t)
      K_forward_a = Array(Int64,diff_t)
      r_forward_a = ret_test[:,its*(dH_.T-1)+1:end]
      K_forward_a =     k_test[its*(dH_.T-1)+1:end]
-     dH_.T = diff_t
+     dH_.T = diff_t +1
      x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward_a, real_tc=real_tc)
      dH_.T = init_T
      all_x = hcat(all_x,x[:,2:end])
@@ -473,7 +484,7 @@ function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_p::Array
      end
 
    end
-   return x[:,2:end]
+   return x
  end
 
 end # SDDP Module

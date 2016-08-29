@@ -143,7 +143,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
       # Simulate with HMM serie
       #ret_hmm = ones(dH.N,1)*maximum(ret_hmm,1)
       all_hmm = simulate_percport(dH, ret_hmm, [1.0;zeros(N)], [0;ones(dH.N)/(dH.N)])
-      ret_hmm_p[se] = sum(all_hmm[:,end])-1
+      ret_hmm_p[se] = sum(all_hmm[:,2:end])-1
 
 
       # Simulate with AR series
@@ -153,7 +153,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
 
       #ret_ar = ones(dH.N,1)*maximum(ret_ar,1)
       all_ar = simulate_percport(dH, ret_ar, [1.0;zeros(N)], [0;ones(dH.N)/(dH.N)])
-      ret_ar_p[se] = sum(all_ar[:,end])-1
+      ret_ar_p[se] = sum(all_ar[:,2:end])-1
     end
     if k > 1
       ttest = UnequalVarianceTTest(ret_hmm_p,ret_hmm_p_last)
