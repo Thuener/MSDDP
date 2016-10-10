@@ -19,7 +19,7 @@ function evaluate(ret_indexes::Array{Float64,2}, ret_assets::Array{Float64,2})
   X = [ones(1,Sa); ret_indexes];
   β = X'\ret_assets'
   res = (ret_assets'-X'*β)'
-  α = β[1,:]
+  α = vec(β[1,:])
   β = β[2:end,:]
 
   for i = 1:N
@@ -27,7 +27,7 @@ function evaluate(ret_indexes::Array{Float64,2}, ret_assets::Array{Float64,2})
     σ = var(res[i,:])
     ϵ[i] = MvNormal([μ],σ)
   end
-  return FFMData(squeeze(α,1),β,ϵ)
+  return FFMData(α,β,ϵ)
 end
 
 end # end FFM module

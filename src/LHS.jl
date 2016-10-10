@@ -5,7 +5,7 @@ using Distributions
 
 # Latin hypercube sampling for normal distribution
 function lhsnorm(μ::Array{Float64,1}, Σ::Array{Float64,2}, n::Int64; rando=true)
-  z = rand(MvNormal(μ,Σ),n)'
+  z = rand(MvNormal(μ,full(Symmetric(Σ))),n)'
 
   p = length(μ)
   x = zeros(size(z))
