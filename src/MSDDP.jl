@@ -139,7 +139,7 @@ function simulatestates(dH::MSDDPData, dM::MKData, K_forward, r_forward)
 
   for t = 2:dH.T
     # Simulating states
-    prob_trans = squeeze(dM.P_K[K_forward[t-1],1:dH.K],1)
+    prob_trans = vec(dM.P_K[K_forward[t-1],1:dH.K])
     K_forward[t] = rand(Categorical(prob_trans))
 
     # Simulationg forward scenarios
@@ -259,7 +259,7 @@ function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Fl
       θ[j,s] <= α[t,j] + β[1,t,j]*u0 + sum{β[i+1,t,j]*(1+dM.r[i,j,s])*u[i], i = 1:dH.N})
 end
 
-function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
+function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, stabUB=0.5)
 
   x_trial = []
   x0_trial = []
@@ -274,6 +274,9 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   It = 0
   S_LB_Ini = dH.S_LB
 
+  list_firstu = vcat(dH.x0_ini,dH.x_ini)
+  list_UB = [-1000]
+  list_LB = [-1000 -1000]
   if parallel
     LB = SharedArray(Float64,dH.S_LB)
   else
@@ -284,8 +287,8 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
   UB_last = 9999999.0
   LB_conserv = 0.0
   eps_UB = 1e-6
-  reset = 2
-  while abs(GAP) > dH.GAPP && UB > eps_UB
+  s_f = 0
+  while abs(GAP) > dH.GAPP && UB > eps_UB && It < dH.Max_It
     It += 1
     tic()
     for s_f = 1:dH.S_FB
@@ -308,10 +311,14 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
        writeLP(Q,"prob.lp")
        error("Can't solve the problem status:",status)
       end
-      UB = getobjectivevalue(AQ[t,k])
+      UB = getobjectivevalue(Q)
+      u = getvalue(getvariable(Q,:u))
+      u0 = getvalue(getvariable(Q,:u0))
+
+      list_firstu = hcat(list_firstu,vcat(u0,u))
 
       debug("FO_forw = $FO_forward, UB = $UB, stabUB $(abs(UB/UB_last -1)*100)")
-      if abs(UB/UB_last -1)*100 < 0.5 || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
+      if abs(UB/UB_last -1)*100 < stabUB || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
         it_stable += 1
         if it_stable >= 5
           if dH.S_LB < 30*S_LB_Ini
@@ -342,6 +349,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     LB_conserv = 0
     GAP = 100
     sumLB =0
+    s_f = 0
     for s_f = 1:dH.S_LB
       simulatestates(dH, dM, K_forward, r_forward)
       x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
@@ -362,8 +370,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
         LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
         GAP = 100*(UB - LB_conserv)/UB
         if abs(GAP) < dH.GAPP
-          LB = LB[1:s_f] # only return the LB that were used
-          info("GAP LB $GAP is lower than $(dH.GAPP) using $s_f Forwards")
+          info("SDDP ended: GAP LB $GAP is lower than $(dH.GAPP) using $s_f Forwards")
           break
         end
 
@@ -374,14 +381,22 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
         end
       end
     end
+    list_UB = vcat(list_UB,UB)
+    list_LB = vcat(list_LB,[mean(LB[1:s_f]) std(LB[1:s_f])/sqrt(s_f)])
 
     time_it = toq()
     info("LB = $LB_conserv, UB = $UB, GAP(%) = $GAP, Time_it: $time_it")
     if It >= dH.Max_It
-      info("Maximum number of iterations exceeded")
+      info("SDDP ended: maximum number of iterations exceeded")
+      break
+    end
+    if UB <= eps_UB
+      info("SDDP ended: UB is zero")
       break
     end
   end
+
+
 
   if simuLB
     file = jldopen("./output/allo_data_G$(string(dH.γ)[3:end])_C$(string(dH.c)[3:end]).jld", "w")
@@ -400,7 +415,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false )
     end
   end
   dH.S_LB = S_LB_Ini
-  return LB, UB, LB_conserv, AQ, sp, vcat(x0_trial',x_trial), u_trial
+  return LB[1:s_f], UB, LB_conserv, AQ, sp, vcat(x0_trial',x_trial), u_trial, list_LB, list_UB, list_firstu
 end
 
 function simulate_stateprob(dH::MSDDPData, dM::MKData, AQ::Array{Model,2},sp::Array{SubProbData,2},
