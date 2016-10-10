@@ -6,6 +6,7 @@ using Logging
 
 import FFM
 export runMSDDP_TD_TC, runMSDDP_TD_NTC, runMyopic, runEqualy, runMSDDP_NTD_TC
+export runMSDDP_TD_TC_IN
 
 Logging.configure(level=Logging.DEBUG)
 
@@ -101,4 +102,27 @@ function runMSDDP_NTD_TC(dH, series, nrows_train, F, R, output_dir, file_name)
   writecsv(string(output_dir,file_name,"_SDDP_NTD_TC_R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all')
   return ret
 end
+
+### Start part in sample
+function runMSDDP_TD_TC_IN(dH, dM, series, states, max_T)
+  info("#### SDDP with temporal dependecy and transactional costs T$(dH.T) ####")
+  debug(dH)
+  NS = size(series,3)
+  days = size(series,2)
+
+  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  rets = Array(Float64, NS, days-1)
+  for s = 1:NS
+    x, x0 = simulatesw(dH, dM, AQ, sp, series[:,:,s], states[:,s])
+    all = vcat(x0[2:end]',x[:,2:end])
+    if size(x,2) != max_T && size(x0) != max_T
+      erro("Worng number of days in simulatesw.")
+    end
+    rets[s,:] = sum(all,1)
+  end
+  ret = mean(rets[:,end])
+  debug("ret $(ret)")
+  return ret,rets
+end
+
 end
