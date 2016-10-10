@@ -111,8 +111,8 @@ end
 
 srand(123)
 #Parameters
-N = 30
-T = 12
+N = 25
+T = 22
 K = 1
 S = 1000
 α = 0.9
@@ -127,9 +127,9 @@ Max_It = 100
 α_lB = 0.9
 
 # Read series
-F = 3
+F = 5
 file_dir = "../../input/"
-file_name = "3FF_Ind30_Daily"
+file_name = "5FF_BM25_Daily_90a15"
 file = string(file_dir,file_name,".csv")
 series = readcsv(file, Float64)'
 #nrows_train = 84 #(2000 to 2006)
