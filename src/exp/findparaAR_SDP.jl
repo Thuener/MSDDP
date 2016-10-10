@@ -18,10 +18,10 @@ function bestsamples_ttest(dS, output_dir, j)
     dS.S=samps[i]
 
     info("Testing SDP with $(dS.S) samples")
-    u_l, Q_l = backward(dF, dS, z_l)
+    Q_l = backward(dF, dS, z_l)
     Ws = Array(Float64, Sc)
     for se = 1:Sc
-      w, all = forward(dS, u_l, z_l, z[:,se], rets_[:,:,se])
+      w, all = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets_[:,:,se])
       Ws[se] = w-1.0
     end
     MRets[i] = mean(Ws)
@@ -41,7 +41,7 @@ function bestsamples_ttest(dS, output_dir, j)
         info("Fail to reject hypoteses with $(dS.S) states. pvalue $(pvalue(ttest))")
         dS.S = samps[i-1]
         best_s = dS.S
-        break
+        #break
       end
     end
     last_Ws = Ws
@@ -49,12 +49,13 @@ function bestsamples_ttest(dS, output_dir, j)
     if dS.S == samps[end]
       best_s = -1
     end
+    gc()
   end
   return best_s
 end
 
 # Choose the number of sates for the HMM using SDP
-function beststate_ttest(dH, dS, output_dir, j)
+function beststate_ttest(dH, dF, dS, output_dir, j)
   max_state = 7
 
   UBs = zeros(Float64,max_state)
@@ -64,12 +65,12 @@ function beststate_ttest(dH, dS, output_dir, j)
   rets_ = rets[:,1:dH.T,:]
 
   # Run SDP
-  u_l, Q_l = backward(dF, dS, z_l)
+  Q_l = backward(dF, dS, z_l)
   Ws = Array(Float64, Sc)
   all_SDP = zeros(Float64,dH.N+1,dH.T,Sc)
   x_ini = [1.0;zeros(N)]
   for se = 1:Sc
-    w, all = forward(dS, u_l, z_l, z[:,se], rets_[:,:,se])
+    w, all = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets_[:,:,se])
     all_SDP[:,:,se] = hcat(x_ini,all)
     Ws[se] = w-1.0
   end
@@ -199,7 +200,7 @@ Max_It = 100
 cs = [0.005,0.01,0.02]
 
 # Parameters for SDP
-L = 1000
+L = 10000
 dS = SDPData(N, T, L, S, α, γ)
 
 # Read series
@@ -222,12 +223,12 @@ z_l = splitequaly(dS.L, z)
 
 if args["samp"]
   bests_sam = zeros(Int64, length(γs))
-  for j = 1:20
+  for j = 1:1
     # For each risk level (γ)
     for i_γ = 1:length(γs)
       dS.γ = γs[i_γ]
       info("Start testes with γ = $(dS.γ)")
-      output_dir = "../../output4/"
+      output_dir = "../../output/"
 
       bests_sam[i_γ] = bestsamples_ttest(dS, output_dir, j)
       writecsv(string(output_dir, file_name, "_best_S$(j).csv"),bests_sam)
@@ -245,9 +246,9 @@ if args["stat"]
       info("Start testes with γ = $(dS.γ)")
 
       dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
-      output_dir = "../../output4/"
+      output_dir = "../../output/"
 
-      best_ks[i_γ] = beststate_ttest(dH, dS, output_dir, j)
+      best_ks[i_γ] = beststate_ttest(dH, dF, dS, output_dir, j)
       writecsv(string(output_dir, file_name, "_best_K$(j).csv"),best_ks)
     end
   end

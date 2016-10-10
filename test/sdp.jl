@@ -37,15 +37,15 @@ dS = SDPData(N, T, L, S, α, γ)
 z_l = splitequaly(dS.L, z)
 
 # Run SDP
-u_l, Q_l = backward(dF, dS, z_l)
+Q_l = backward(dF, dS, z_l)
 ws = zeros(Float64, Sc)
 all = Array(Float64, N+1,T-1, Sc)
 for se = 1:Sc
-  ws[se], all[:,:,se] = forward(dS, u_l, z_l, z[:,se], rets[:,:,se])
+  ws[se], all[:,:,se] = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets[:,:,se])
 end
 
 
-@test_approx_eq_eps mean(ws) 1.0115514770785958 1e-6
-@test_approx_eq_eps std(ws) 0.02509485782431958 1e-6
-@test_approx_eq_eps mean(all[1,:,:]) 0.8937079903429342  1e-6
-@test_approx_eq_eps mean(all[4,:,:]) 0.0401341509054208 1e-6
+@test_approx_eq_eps mean(ws) 1.0114868681778884 1e-6
+@test_approx_eq_eps std(ws) 0.025142555140114615 1e-6
+@test_approx_eq_eps mean(all[1,:,:]) 0.8928728587066812  1e-6
+@test_approx_eq_eps mean(all[4,:,:]) 0.03838291640317532 1e-6

@@ -114,7 +114,7 @@ function runOSFC(dF, dS, z_l, rets_, z, ret_p)
   info("Training One Step FC...")
   dO.Mod = true
   # Run SDP
-  @time u_l, Q_l = SDP.backward(dF, dS, z_l)
+  @time Q_l = SDP.backward(dF, dS, z_l)
   # Use in one-step
   @time H_l, sp = OneStep.backward(dF, dO, z_l, Q_l)
 
