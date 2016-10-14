@@ -14,14 +14,14 @@ function bestsamples_ttest(dS, output_dir, j)
   best_s = 0
   rets_ = rets[:,1:dS.T,:]
 
+  pvaluelow = true
   for i = 1:length(samps)
     dS.S=samps[i]
-
     info("Testing SDP with $(dS.S) samples")
-    Q_l = backward(dF, dS, z_l)
+    β = backward(dF, dS, z_l)
     Ws = Array(Float64, Sc)
     for se = 1:Sc
-      w, all = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets_[:,:,se])
+      w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
       Ws[se] = w-1.0
     end
     MRets[i] = mean(Ws)
@@ -37,10 +37,13 @@ function bestsamples_ttest(dS, output_dir, j)
         writecsv(string(output_dir,file_name,"_$(γ_srt)$(dS.S)_ret$j.csv"), Ws)
       end
       writecsv(string(output_dir,file_name,"_$(γ_srt)_table_samp$j.csv"),hcat(MRets,PVals))
-      if pvalue(ttest) >= 0.05
+      if pvalue(ttest) < 0.05
+        pvaluelow = true
+      elseif pvaluelow
         info("Fail to reject hypoteses with $(dS.S) states. pvalue $(pvalue(ttest))")
         dS.S = samps[i-1]
         best_s = dS.S
+        pvaluelow = false
         #break
       end
     end
@@ -65,12 +68,12 @@ function beststate_ttest(dH, dF, dS, output_dir, j)
   rets_ = rets[:,1:dH.T,:]
 
   # Run SDP
-  Q_l = backward(dF, dS, z_l)
+  β = backward(dF, dS, z_l)
   Ws = Array(Float64, Sc)
   all_SDP = zeros(Float64,dH.N+1,dH.T,Sc)
   x_ini = [1.0;zeros(N)]
   for se = 1:Sc
-    w, all = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets_[:,:,se])
+    w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
     all_SDP[:,:,se] = hcat(x_ini,all)
     Ws[se] = w-1.0
   end
@@ -122,7 +125,7 @@ function beststate_ttest(dH, dF, dS, output_dir, j)
     if pvalue(ttest) >= 0.05
       info("Fail to reject hypoteses with $k states. pvalue $(pvalue(ttest))")
       best_k = dH.K
-      break
+      #break
     end
 
     # If couldn't stabilize the returns put -1
@@ -200,7 +203,7 @@ Max_It = 100
 cs = [0.005,0.01,0.02]
 
 # Parameters for SDP
-L = 10000
+L = 1000
 dS = SDPData(N, T, L, S, α, γ)
 
 # Read series
@@ -238,7 +241,7 @@ end
 
 if args["stat"]
   best_ks = zeros(Int64,length(γs))
-  for j = 1:20
+  for j = 1:1
     # For each risk level (γ)
     for i_γ = 1:length(γs)
       γ = γs[i_γ]
