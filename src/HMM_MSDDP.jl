@@ -147,21 +147,23 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
 
   ## Use HMM for each state in LHS
 	norm = MvNormal(dF.Σ)
-  r = zeros(dH.N, dH.K, dH.S)
+  r = zeros(dH.T,dH.N, dH.K, dH.S)
   for k = 1:dH.K
 		μ = model[:means_][k,:][:]
     Σ = model[:covars_][k,:]
     z_tp1 = lhsnorm(μ, Σ, dH.S, rando=false)'
-		for s = 1:dH.S
-      sm = rand(norm)
-			e = sm[1:dH.N]
-			v = sm[dH.N+1]
-			z_t = (z_tp1[s] - dF.a_z[1] - v)/dF.b_z[1]
-			ρ = dF.a_r + dF.b_r*z_t + e
-			# Transform ρ = ln(1+r) in return (r)
-			r[:,k,s] = exp(ρ)-1
-			# Discount risk free rate
-			r[:,k,s] -= dF.r_f
+		for t = 1:dH.T
+			for s = 1:dH.S
+	      sm = rand(norm)
+				e = sm[1:dH.N]
+				v = sm[dH.N+1]
+				z_t = (z_tp1[s] - dF.a_z[1] - v)/dF.b_z[1]
+				ρ = dF.a_r + dF.b_r*z_t + e
+				# Transform ρ = ln(1+r) in return (r)
+				r[t,:,k,s] = exp(ρ)-1
+				# Discount risk free rate
+				r[t,:,k,s] -= dF.r_f
+			end
 		end
   end
   dM = MKData( r, p_s, k_ini, P_K )
@@ -183,20 +185,22 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
   p_s = ones(dH.S, dH.K)*1.0/dH.S
 
   ## Use HMM for each state in LHS
-  r = zeros(dH.N, dH.K, dH.S)
+  r = zeros(dH.T, dH.N, dH.K, dH.S)
 	samp_ϵ = Array(Float64,dH.N)
   for k = 1:dH.K
 		μ = squeeze(model[:means_][k,:],1)
     Σ = squeeze(model[:covars_][k,:,:],1)
     z = lhsnorm(μ, Σ, dH.S, rando=false)'
-		for s = 1:dH.S
-			for i = 1:dH.N
-				samp_ϵ[i] = rand(dSI.ϵ[i])[1]
-			end
-			ρ = dSI.α + (dSI.β'*z[:,s]) + samp_ϵ
+		for t = 1:dH.T
+			for s = 1:dH.S
+				for i = 1:dH.N
+					samp_ϵ[i] = rand(dSI.ϵ[i])[1]
+				end
+				ρ = dSI.α + (dSI.β'*z[:,s]) + samp_ϵ
 
-			# Transform ρ = ln(1+r) in return (r)
-			r[:,k,s] = exp(ρ)-1
+				# Transform ρ = ln(1+r) in return (r)
+				r[t,:,k,s] = exp(ρ)-1
+			end
 		end
   end
   dM = MKData( r, p_s, k_ini, P_K )
