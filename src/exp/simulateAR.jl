@@ -96,11 +96,11 @@ function runOS(dF, dO, z_l, rets_, z, ret_p)
   ############ One Step ############
   info("#### One Step ####")
   info("Training One Step...")
-  @time H_l, sp = OneStep.backward(dF, dO, z_l)
+  β = ones(Float64, dS.T, 3)
 
   info("Simulating One Step...")
   for se = 1:Sc
-    x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
+    x, x0 = OneStep.forward(dO, dF, dS, β, z_l, z[:,se], rets_[:,:,se])
     ret_p[2,se] = x0[end]+sum(x[:,end])-1.0
   end
   info("Memory use $(memuse())")
@@ -114,13 +114,11 @@ function runOSFC(dF, dS, z_l, rets_, z, ret_p)
   info("Training One Step FC...")
   dO.Mod = true
   # Run SDP
-  @time Q_l = SDP.backward(dF, dS, z_l)
-  # Use in one-step
-  @time H_l, sp = OneStep.backward(dF, dO, z_l, Q_l)
+  @time β = SDP.backward(dF, dS, z_l)
 
   info("Simulating One Step FC...")
   for se = 1:Sc
-    x, x0 = OneStep.forward(dO, H_l, sp, z_l, z[:,se], rets_[:,:,se])
+    x, x0 = OneStep.forward(dO, dF, dS, β, z_l, z[:,se], rets_[:,:,se])
     ret_p[3,se] = x0[end]+sum(x[:,end])-1.0
   end
   info("Memory use $(memuse())")

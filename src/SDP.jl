@@ -130,7 +130,7 @@ function findslots(z_s::Array{Float64,1}, z_l::Array{Float64,1}, S::Int64, L::In
 end
 
 function backward(dF::ARData, dS::SDPData, z_l::Array{Float64,1})
-  Q_l = Array(Float64, dS.L)
+  Q_l = ones(Float64, dS.L)
   β = Array(Float64, dS.T, 3)
   p_s = ones(dS.S)*1/dS.S
   for t = dS.T-1:-1:1

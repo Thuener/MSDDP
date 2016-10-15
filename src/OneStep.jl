@@ -53,18 +53,20 @@ function createmodel(dO::OSData, p::Array{Float64,1}, r::Array{Float64,2}, Q_tp1
 end
 
 
-function forward(dO::OSData, H_l::Array{Model,2}, sp::Array{SubProbData,2}, z_l::Array{Float64,1}, zs::Array{Float64,1},
-    rets_tp1::Array{Float64,2})
-  W = 1.0
+function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, z_l::Array{Float64,1}, z_t::Array{Float64,1},
+    rets_t::Array{Float64,2})
   x_trial = zeros(dO.N,dO.T)
   x0_trial = zeros(dO.T)
   x_trial[1:dO.N,1] = dO.x_ini
   x0_trial[1] = dO.x0_ini
+  p_s = ones(dS.S)*1/dS.S
 
   for t = 1:dO.T-1
-    slot = SDP.findslot(zs[t], z_l, dO.L)
-    H = H_l[t,slot]
-    subp = sp[t,slot]
+    Q_s, r_s = SDP.samplestp1(dS, dF, vec(β[t+1,:]), z_l, z_t[t])
+    if t+1 == dS.T || ~dO.Mod
+      Q_s =  ones(Float64,dS.S)
+    end
+    H, subp = createmodel(dO, p_s, r_s, Q_s)
 
     # Change x
     MSDDP.chgConstrRHS(H, subp.cash, x0_trial[t])
@@ -80,49 +82,11 @@ function forward(dO::OSData, H_l::Array{Model,2}, sp::Array{SubProbData,2}, z_l:
     end
     u = getvariable(H,:u)
     for i = 1:dO.N
-      x_trial[i,t+1] = (1+rets_tp1[i,t+1])*getvalue(u[i])
+      x_trial[i,t+1] = (1+rets_t[i,t+1])*getvalue(u[i])
     end
     x0_trial[t+1] = getvalue(getvariable(H,:u0))
   end
   return x_trial, x0_trial
-end
-
-function backward(dF::ARData, dO::OSData, z_l::Array{Float64,1})
-  Q_l = ones(Float64, dO.T, dO.L)
-  return backward(dF, dO, z_l, Q_l)
-end
-
-function backward(dF::ARData, dO::OSData, z_l::Array{Float64,1}, Q_l::Array{Float64,2})
-  H_l = Array(Model,dO.T-1,dO.L)
-  sp = Array(SubProbData,dO.T-1,dO.L)
-  # LHS
-  e = lhsnorm(zeros(dO.N+1), dF.Σ, dO.S, rando=false)'
-  p_s = ones(dO.S)*1/dO.S
-  r = Array(Float64, dO.N, dO.S)
-  z_tp1 = Array(Float64, dO.S)
-  for t = dO.T-1:-1:1
-    info(" t = $t")
-    for l = 1:dO.L
-      for s = 1:dO.S
-        ρ =  dF.a_r +dF.b_r*z_l[l] + e[1:dO.N,s]
-        # Transform ρ = ln(r) in return (r)
-        r[:,s] = exp(ρ)-1
-        # Discount risk free rate
-        r[:,s] -= dF.r_f
-        z_tp1[s] = dF.a_z[1] +dF.b_z[1]*z_l[l] + e[dO.N+1,s]
-      end
-      Q_s = Array(Float64, dO.S)
-      if t+1 != dO.T && dO.Mod
-        slots = SDP.findslots(z_tp1, z_l, dO.S, dO.L)
-        Q_s = vec(Q_l[t+1,slots])
-      else
-        Q_s = ones(dO.S)
-      end
-
-      H_l[t,l], sp[t,l] = createmodel(dO, p_s, r, Q_s)
-    end
-  end
-  return H_l, sp
 end
 
 end # end SDP
