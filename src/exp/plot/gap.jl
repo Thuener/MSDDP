@@ -19,7 +19,7 @@ l2=layer(df, x=:It, y=:LB, ymin=:lLB, ymax=:uLB, Geom.line, Geom.ribbon)
 
 coord = Coord.cartesian(xmin=1, xmax=size(UB,1)-1)
 p = plot(l1,l2, coord,
-  Guide.ylabel("Objective value"),Guide.xlabel("MSDDP iteration"),
+  Guide.ylabel("Objective value"),Guide.xticks(ticks=collect(1:1:maximum(df[:It]))),Guide.xlabel("MSDDP iteration"),
   Theme(line_width=2px,grid_line_width=1px),
   Guide.manual_color_key("",["UB","LB"], ["red", "deepskyblue"]));
 

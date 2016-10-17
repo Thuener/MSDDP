@@ -3,7 +3,8 @@ using Vega
 function plotall(us)
   n = size(us,1)
   days = size(us,2)
-  if n == 50
+  names = []
+  if n == 51
     names = [" RF","SMALL LoBM","ME1 BM2","ME1 BM3",
       "ME1 BM4","SMALL HiBM","ME2 BM1","ME2 BM2",
       "ME2 BM3","ME2 BM4","ME2 BM5","ME3 BM1",
@@ -12,7 +13,7 @@ function plotall(us)
       "ME4 BM5","BIG LoBM","ME5 BM2","ME5 BM3","ME5 BM4","BIG HiBM"]
   end
 
-  if n == 100
+  if n == 101
     names = [" RF","SMALL LoOP","ME1 OP2","ME1 OP3","ME1 OP4","ME1 OP5","ME1 OP6","ME1 OP7",
       "ME1 OP8","ME1 OP9","SMALL HiOP","ME2 OP1","ME2 OP2","ME2 OP3","ME2 OP4",
       "ME2 OP5","ME2 OP6","ME2 OP7","ME2 OP8","ME2 OP9","ME2 OP10","ME3 OP1",
@@ -45,7 +46,7 @@ function plotall(us)
   end
 
 
-  a = areaplot(x = x, y = y, group = g, stacked = true, normalize = true)
+  a = areaplot(x = x, y = y, group = gnames, stacked = true, normalize = true)
   xlim!(a, min=1)
   legend!(a, title = "Portfolios",show=true)
   xlab!(a, title = "MSDDP iteration")
@@ -53,7 +54,7 @@ function plotall(us)
   return a
 end
 
-us = readcsv("/home/tas/Dropbox/PUC/PosDOC/ArtigoSDDP/Julia/output/5FF_BM100_Large_u_g06_c02.csv")
+us = readcsv("5FF_BM100_Large_u_g06_c02.csv")
 a = plotall(us)
 
 barplot(x = x, y = y, group = group, stacked = true)
