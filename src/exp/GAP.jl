@@ -1,7 +1,7 @@
 #addprocs(3)
 include("parametersBM100.jl")
 
-γs = [0.05]#[0.005, 0.01,0.02]
+γs = [0.06]#[0.005, 0.01,0.02]
 cs = [0.02]#[0.005, 0.01,0.02]
 
 file = string(output_dir,file_name,"_ret.csv")
