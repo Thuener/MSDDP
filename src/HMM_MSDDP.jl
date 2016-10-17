@@ -146,19 +146,16 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
   p_s = ones(dH.S, dH.K)*1.0/dH.S
 
   ## Use HMM for each state in LHS
-	norm = MvNormal(dF.Σ)
   r = zeros(dH.T,dH.N, dH.K, dH.S)
   for k = 1:dH.K
 		μ = model[:means_][k,:][:]
     Σ = model[:covars_][k,:]
     z_tp1 = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for t = 1:dH.T
+			ϵ = lhsnorm(zeros(dH.N+1), dF.Σ, dH.S, rando=true)'
 			for s = 1:dH.S
-	      sm = rand(norm)
-				e = sm[1:dH.N]
-				v = sm[dH.N+1]
-				z_t = (z_tp1[s] - dF.a_z[1] - v)/dF.b_z[1]
-				ρ = dF.a_r + dF.b_r*z_t + e
+				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[dH.N+1,s])/dF.b_z[1]
+				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:dH.N,s]
 				# Transform ρ = ln(1+r) in return (r)
 				r[t,:,k,s] = exp(ρ)-1
 				# Discount risk free rate
@@ -186,17 +183,17 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
 
   ## Use HMM for each state in LHS
   r = zeros(dH.T, dH.N, dH.K, dH.S)
-	samp_ϵ = Array(Float64,dH.N)
+	samp_ϵ = Array(Float64,dH.N,dH.S)
   for k = 1:dH.K
 		μ = squeeze(model[:means_][k,:],1)
     Σ = squeeze(model[:covars_][k,:,:],1)
     z = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for t = 1:dH.T
+			for i = 1:dH.N
+				samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], dH.S, rando=true)
+			end
 			for s = 1:dH.S
-				for i = 1:dH.N
-					samp_ϵ[i] = rand(dSI.ϵ[i])[1]
-				end
-				ρ = dSI.α + (dSI.β'*z[:,s]) + samp_ϵ
+				ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
 
 				# Transform ρ = ln(1+r) in return (r)
 				r[t,:,k,s] = exp(ρ)-1
