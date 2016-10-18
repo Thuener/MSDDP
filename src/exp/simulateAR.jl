@@ -130,10 +130,10 @@ for dH.T in Ts
   rets_ = rets[:,1:dH.T,:]
   rets_p = zeros(3*3,length(γs),length(cs))
   file = string(output_dir,file_name,"_$(dH.T)_table.csv")
-  for i_γ = 1:length(γs)
-    dH.γ = dS.γ = dO.γ = γs[i_γ]
-    for i_c = 1:length(cs)
-      dH.c = dO.c = cs[i_c]
+  for i_c = 1:length(cs)
+    dH.c = dO.c = cs[i_c]
+    for i_γ = 1:length(γs)
+      dH.γ = dS.γ = dO.γ = γs[i_γ]
       ret_p = SharedArray(Float64,3,Sc)
       info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
       runMSDDP(dH, dM, Sc, rets_, states, ret_p)
