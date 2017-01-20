@@ -12,7 +12,7 @@ export chgConstrRHS
 
 type MKData # Markov Data
   r::Array{Float64,4}
-  ps_j::Array{Float64,2}
+  ps_k::Array{Float64,2}
   k_ini::Int64
   P_K::Array{Float64,2}
 end
@@ -100,17 +100,17 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3}, p_state::
   @variable(Q, θ[1:dH.K,1:dH.S] <= dH.M)
 
   @objective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
-                  + sum{(sum{ret[i,j,s]*u[i], i = 1:dH.N} + θ[j,s])*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S})
+                  + sum{(sum{ret[i,k,s]*u[i], i = 1:dH.N} + θ[k,s])*p_state[k]*dM.ps_k[s,k], k = 1:dH.K, s = 1:dH.S})
 
   cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
   assets = Array(Int64,dH.N)
   for i = 1:dH.N
     assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
   end
-  risk =  @constraint(Q,-(z - sum{p_state[j]*dM.ps_j[s,j]*y[j,s] , j = 1:dH.K, s = 1:dH.S}/(1-dH.α))
+  risk =  @constraint(Q,-(z - sum{p_state[k]*dM.ps_k[s,k]*y[k,s] , k = 1:dH.K, s = 1:dH.S}/(1-dH.α))
                           + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
 
-  @constraint(Q, trunc[j = 1:dH.K, s = 1:dH.S], y[j,s] >= z - sum{ret[i,j,s]*u[i], i = 1:dH.N})
+  @constraint(Q, trunc[k = 1:dH.K, s = 1:dH.S], y[k,s] >= z - sum{ret[i,k,s]*u[i], i = 1:dH.N})
   sp = SubProbData( cash, assets, risk )
   return Q, sp
 end
@@ -120,17 +120,17 @@ function createmodels(dH::MSDDPData, dM::MKData, LP=2)
   AQ = Array(Model,dH.T-1,dH.K)
 
   for t = 1:dH.T-1
-    for k = 1:dH.K
-      ret = squeeze(dM.r[t+1,:,:,:],1)
-      p = squeeze(dM.P_K[k,:],1)
-      AQ[t,k], sp[t,k] = createmodel(dH, dM,  ret, p, LP)
+    for j = 1:dH.K
+      ret = dM.r[t+1,:,:,:]
+      p = dM.P_K[j,:]
+      AQ[t,j], sp[t,j] = createmodel(dH, dM,  ret, p, LP)
     end
   end
 
   # Add cuts to T-1
-  for k = 1:dH.K
-    θ = getvariable(AQ[dH.T-1,k],:θ)
-    @constraint(AQ[dH.T-1,k],corte_js[j = 1:dH.K, s = 1:dH.S], θ[j,s] ==  0)
+  for j = 1:dH.K
+    θ = getvariable(AQ[dH.T-1,j],:θ)
+    @constraint(AQ[dH.T-1,j],corte_ks[k = 1:dH.K, s = 1:dH.S], θ[k,s] ==  0)
   end
   return AQ, sp
 end
@@ -145,7 +145,7 @@ function simulatestates(dH::MSDDPData, dM::MKData, K_forward, r_forward)
     K_forward[t] = rand(Categorical(prob_trans))
 
     # Simulationg forward scenarios
-    r_idx = rand(Categorical(dM.ps_j[1:dH.S,K_forward[t]]))
+    r_idx = rand(Categorical(dM.ps_k[1:dH.S,K_forward[t]]))
     r_forward[1:dH.N,t] = dM.r[t,1:dH.N,K_forward[t],r_idx];
   end
 end
@@ -184,7 +184,7 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
     u = getvariable(Q,:u)
     p_state = dM.P_K[K_forward[t],:]'
     @expression(Q, B_imed, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
-             + sum{(sum{dM.r[t+1,i,j,s]*u[i], i = 1:dH.N} )*p_state[j]*dM.ps_j[s,j], j = 1:dH.K, s = 1:dH.S} )
+             + sum{(sum{dM.r[t+1,i,j,s]*u[i], i = 1:dH.N} )*p_state[j]*dM.ps_k[s,j], j = 1:dH.K, s = 1:dH.S} )
 
     FO_forward += getvalue(B_imed)
 

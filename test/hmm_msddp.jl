@@ -81,7 +81,7 @@ end
 @test_approx_eq_eps mean(reshape(dM.r[:,order[2],:],dH.N,dH.S),2) [0.002996800086701159  0.005042811147145921 0.007042256239115454 -0.6852052890669273] 1e-6
 @test_approx_eq_eps mean(reshape(dM.r[:,order[3],:],dH.N,dH.S),2) [0.015196632580590699 0.022208399618642474 0.024857176445799788   1.4464545530498576] 1e-6
 
-@test_approx_eq_eps sum(dM.ps_j,1) [1 1 1] 1e-6
+@test_approx_eq_eps sum(dM.ps_k,1) [1 1 1] 1e-6
 
 @test dM.k_ini == order[3]
 
