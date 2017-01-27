@@ -261,7 +261,7 @@ function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Fl
       θ[j,s] <= α[t,j] + β[1,t,j]*u0 + sum{β[i+1,t,j]*(1+dM.r[t+1,i,j,s])*u[i], i = 1:dH.N})
 end
 
-function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, stabUB=0.5)
+function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, stabUB=0.5, fastLBcal=true)
 
   x_trial = []
   x0_trial = []
@@ -323,7 +323,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
       if abs(UB/UB_last -1)*100 < stabUB || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
         it_stable += 1
         if it_stable >= 5
-          if dH.S_LB < 30*S_LB_Ini
+          if dH.S_LB < 30*S_LB_Ini && fastLBcal
             dH.S_LB = round(Int64,dH.S_LB*1.2)
             info("Increasing S_LB for $(dH.S_LB)")
             if parallel
@@ -358,30 +358,38 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
       LB[s_f] = FO_forward
       sumLB += FO_forward
       # Start testing after S_LB_Ini simulations
-      if s_f >= S_LB_Ini/3
-        meanLB = sumLB/s_f
-        GAP_mean = 100*(UB - meanLB)/UB
-        if GAP_mean > dH.GAPP*3 && it_stable < 10
-          info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) UB using $s_f Forwards. Aborting LB evaluation.")
-          break
-        end
-      end
-
-      if s_f >= S_LB_Ini
-        meanLB = sumLB/s_f
-        LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
-        GAP = 100*(UB - LB_conserv)/UB
-        if abs(GAP) < dH.GAPP
-          info("SDDP ended: GAP LB $GAP is lower than $(dH.GAPP) using $s_f Forwards")
-          break
+      if fastLBcal
+        if s_f >= S_LB_Ini/3
+          meanLB = sumLB/s_f
+          GAP_mean = 100*(UB - meanLB)/UB
+          if GAP_mean > dH.GAPP*3 && it_stable < 10
+            info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) UB using $s_f Forwards. Aborting LB evaluation.")
+            break
+          end
         end
 
-        GAP_mean = 100*(UB - meanLB)/UB
-        if GAP_mean > dH.GAPP && it_stable < 10
-          info("GAP_mean $GAP_mean is higher than $(dH.GAPP) UB using $s_f Forwards. Aborting LB evaluation.")
-          break
+        if s_f >= S_LB_Ini
+          meanLB = sumLB/s_f
+          LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
+          GAP = 100*(UB - LB_conserv)/UB
+          if abs(GAP) < dH.GAPP
+            info("SDDP ended: GAP LB $GAP is lower than $(dH.GAPP) using $s_f Forwards")
+            break
+          end
+
+          GAP_mean = 100*(UB - meanLB)/UB
+          if GAP_mean > dH.GAPP && it_stable < 10
+            info("GAP_mean $GAP_mean is higher than $(dH.GAPP) UB using $s_f Forwards. Aborting LB evaluation.")
+            break
+          end
         end
       end
+    end
+
+    if !fastLBcal # Evaluate the lower bound always using S_LB forwards
+      meanLB = sumLB/s_f
+      LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
+      GAP = 100*(UB - LB_conserv)/UB
     end
     list_UB = vcat(list_UB,UB)
     list_LB = vcat(list_LB,[mean(LB[1:s_f]) std(LB[1:s_f])/sqrt(s_f)])
