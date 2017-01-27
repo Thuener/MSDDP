@@ -1,3 +1,4 @@
+# Stochastic Dynamic Programming for Autoregressive model
 module SDP
 using JuMP, CPLEX
 using Distributions

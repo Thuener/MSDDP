@@ -1,3 +1,5 @@
+# Simulate the Farma French Model in sample
+
 using MSDDP, HMM_MSDDP, Util
 using Distributions
 using Logging
