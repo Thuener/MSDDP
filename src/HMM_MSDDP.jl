@@ -185,8 +185,8 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
   r = zeros(dH.T, dH.N, dH.K, dH.S)
 	samp_ϵ = Array(Float64,dH.N,dH.S)
   for k = 1:dH.K
-		μ = squeeze(model[:means_][k,:],1)
-    Σ = squeeze(model[:covars_][k,:,:],1)
+		μ = model[:means_][k,:]
+    Σ = model[:covars_][k,:,:]
     z = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for t = 1:dH.T
 			for i = 1:dH.N
