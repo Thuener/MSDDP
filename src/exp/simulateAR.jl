@@ -1,42 +1,18 @@
+# Simulate AR model from Brown
 using MSDDP, HMM_MSDDP, AR, Util
 import OneStep, SDP
 using Distributions, Logging
 Logging.configure(level=Logging.DEBUG)
 
 srand(123)
-T_max = 240
-Sc = 1000
-T_hmm = 120
-
+include("parametersAR.jl")
 # AR
-Σ = [0.002894	0.003532	0.00391	-0.000115; 0.003532	0.004886	0.005712	-0.000144; 0.00391	0.005712	0.007259	-0.000163; -0.000115	-0.000144	-0.000163	0.0529]
-b_r = [ 0.0028; 0.0049; 0.0061]
-b_z = [0.9700]
-a_r  = [0.0053; 0.0067; 0.0072]
-a_z  = [0.0000]
-r_f = 0.00042
 dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parmeters
-N = 3
-T = 13
-K = 4
-S = 750
-α = 0.9
-x_ini_s = [1.0;zeros(N)]
-c = 0.005
-M = 9999999
-γ = 0.002
-S_LB = 300
-S_FB = 100
-GAPP = 1
-Max_It = 15
-α_lB = 0.9
-
 dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
 
 # One Step data
-L = 1000
 dO = OneStep.OSData(N, T, L, S, α, c, γ, true, x_ini_s[2:N+1], x_ini_s[1])
 dS = SDP.SDPData(N, T, L, S, α, γ)
 
@@ -45,21 +21,6 @@ tic()
 γs = [0.05,0.1, 0.2,0.3]
 cs = [0.005,0.013,0.02]
 Ts = [12]#,24,48]
-
-output_dir = "../../outputAR/"
-
-# Read series
-file_name = string("$(N)MS_$(T_max)_$(Sc)")
-file_dir = "../../input/"
-file = string(file_dir,file_name,".csv")
-serie = readcsv(file, Float64)
-serie = reshape(serie,N+1,T_max,Sc)
-
-# Divide the series
-ln_ret = serie[1:N,:,:]
-rets = exp(ln_ret)-1 -dF.r_f
-
-z = reshape(serie[N+1,:,:], T_max, Sc)
 
 # Split z
 z_l = SDP.splitequaly(dS.L, z)
@@ -149,8 +110,8 @@ for dH.T in Ts
       for i = 1:3
         m = mean(ret_p[i,:])
         rets_p[i,i_γ,i_c] = m
-        rets_p[i+3,i_γ,i_c] = m - (1.96 * std(ret_p[i,:]) / sqrt(Sc))
-        rets_p[i+6,i_γ,i_c] = m + (1.96 * std(ret_p[i,:]) / sqrt(Sc))
+        rets_p[i+3,i_γ,i_c] = m - (quantile(Normal(),0.975) * std(ret_p[i,:]) / sqrt(Sc))
+        rets_p[i+6,i_γ,i_c] = m + (quantile(Normal(),0.975) * std(ret_p[i,:]) / sqrt(Sc))
       end
       open(file,"a") do x
         writecsv(x,hcat(dH.c, dH.γ,rets_p[:,i_γ,i_c]'))
