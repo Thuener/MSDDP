@@ -357,11 +357,27 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
     GAP = 100
     sumLB =0
     s_f = 0
+    doubleS_LB = false
     for s_f = 1:dH.S_LB
       simulatestates(dH, dM, K_forward, r_forward)
       x_trial, x0_trial, FO_forward, u_trial = forward(dH, dM, AQ, sp, K_forward, r_forward)
       LB[s_f] = FO_forward
       sumLB += FO_forward
+
+      meanLB = sumLB/s_f
+      GAP_mean = 100*(UB - meanLB)/UB
+      # If the GAP_mean is lower then dH.GAPP( the GAP is almost close)
+      # doubles the number of scenarios used in LB
+      if doubleS_LB == false && GAP_mean < dH.GAPP
+        doubleS_LB = true
+        dH.S_LB = round(Int64,dH.S_LB + dH.S_LB_inc)
+        info("GAP_mean < dH.GAPP increasing S_LB for $(dH.S_LB)")
+        if parallel
+          LB = vcat(LB,SharedArray(Float64,dH.S_LB_inc))
+        else
+          LB = vcat(LB,Array(Float64,dH.S_LB))
+        end
+      end
       # Start testing after S_LB_Ini simulations
       if fastLBcal
         if s_f >= S_LB_Ini/3
