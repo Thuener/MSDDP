@@ -23,12 +23,14 @@ type MSDDPData # MSDDP Data
   K::Int64
   S::Int64
   α::Float64
-  x_ini::Array{Float64,1}
-  x0_ini::Float64
+  x::Array{Float64,1}
+  x0::Float64
+  W_ini::Float64
   c::Float64
   M::Int64
   γ::Float64
   S_LB::Int64
+  S_LB_inc::Int64
   S_FB::Int64
   GAPP::Float64
   Max_It::Int64
@@ -102,13 +104,13 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3}, p_state::
   @objective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
                   + sum{(sum{ret[i,k,s]*u[i], i = 1:dH.N} + θ[k,s])*p_state[k]*dM.ps_k[s,k], k = 1:dH.K, s = 1:dH.S})
 
-  cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
+  cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0).idx
   assets = Array(Int64,dH.N)
   for i = 1:dH.N
-    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
+    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x[i]).idx
   end
   risk =  @constraint(Q,-(z - sum{p_state[k]*dM.ps_k[s,k]*y[k,s] , k = 1:dH.K, s = 1:dH.S}/(1-dH.α))
-                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
+                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x)+dH.x0)).idx
 
   @constraint(Q, trunc[k = 1:dH.K, s = 1:dH.S], y[k,s] >= z - sum{ret[i,k,s]*u[i], i = 1:dH.N})
   sp = SubProbData( cash, assets, risk )
@@ -124,6 +126,7 @@ function createmodels(dH::MSDDPData, dM::MKData, LP=2)
       ret = dM.r[t+1,:,:,:]
       p = dM.P_K[j,:]
       AQ[t,j], sp[t,j] = createmodel(dH, dM,  ret, p, LP)
+      solve(AQ[t,j])
     end
   end
 
@@ -131,6 +134,7 @@ function createmodels(dH::MSDDPData, dM::MKData, LP=2)
   for j = 1:dH.K
     θ = getvariable(AQ[dH.T-1,j],:θ)
     @constraint(AQ[dH.T-1,j],corte_ks[k = 1:dH.K, s = 1:dH.S], θ[k,s] ==  0)
+    solve(AQ[dH.T-1,j])
   end
   return AQ, sp
 end
@@ -156,11 +160,11 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
   # Initialize
   x_trial = zeros(dH.N,dH.T)
   x0_trial = zeros(dH.T)
-  x_trial[1:dH.N,1] = dH.x_ini
-  x0_trial[1] = dH.x0_ini
+  x_trial[1:dH.N,1] = dH.x
+  x0_trial[1] = dH.x0
   u_trial = zeros(dH.N+1,dH.T)
 
-  FO_forward = 0
+  FO_forward = dH.W_ini
   for t = 1:dH.T-1
     k = K_forward[t]
     subp = sp[t,k]
@@ -257,7 +261,8 @@ function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Fl
   θ = getvariable(Q,:θ)
   u = getvariable(Q,:u)
   u0 = getvariable(Q,:u0)
-  @constraint(Q,corte_js[j = 1:dH.K, s = 1:dH.S],
+
+  @constraint(Q, corte_js[j = 1:dH.K, s = 1:dH.S],
       θ[j,s] <= α[t,j] + β[1,t,j]*u0 + sum{β[i+1,t,j]*(1+dM.r[t+1,i,j,s])*u[i], i = 1:dH.N})
 end
 
@@ -276,7 +281,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
   It = 0
   S_LB_Ini = dH.S_LB
 
-  list_firstu = vcat(dH.x0_ini,dH.x_ini)
+  list_firstu = vcat(dH.x0,dH.x)
   list_UB = [-1000]
   list_LB = [-1000 -1000]
   if parallel
@@ -313,7 +318,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
        writeLP(Q,"prob.lp")
        error("Can't solve the problem status:",status)
       end
-      UB = getobjectivevalue(Q)
+      UB = getobjectivevalue(Q) + dH.W_ini
       u = getvalue(getvariable(Q,:u))
       u0 = getvalue(getvariable(Q,:u0))
 
@@ -324,8 +329,8 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
         it_stable += 1
         if it_stable >= 5
           if dH.S_LB < 30*S_LB_Ini && fastLBcal
-            dH.S_LB = round(Int64,dH.S_LB*1.2)
-            info("Increasing S_LB for $(dH.S_LB)")
+            dH.S_LB = round(Int64,dH.S_LB + dH.S_LB_inc)
+            info("Stable UB Increasing S_LB for $(dH.S_LB)")
             if parallel
               LB = SharedArray(Float64,dH.S_LB)
             else
@@ -363,7 +368,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
           meanLB = sumLB/s_f
           GAP_mean = 100*(UB - meanLB)/UB
           if GAP_mean > dH.GAPP*3 && it_stable < 10
-            info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) UB using $s_f Forwards. Aborting LB evaluation.")
+            info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) using $s_f Forwards. Aborting LB evaluation.")
             break
           end
         end
@@ -458,8 +463,8 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
    T_test = size(ret_test,2)
    its=floor(Int,(T_test-1)/(dH_.T-1))
 
-   all_x = dH_.x_ini
-   all_x0 = dH_.x0_ini
+   all_x = dH_.x
+   all_x0 = dH_.x0
    for i = 1:its
      r_forward   = ret_test[:,(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
      K_forward_a =     k_test[(i-1)*(dH_.T-1)+1:(i)*(dH_.T-1)+1]
@@ -467,8 +472,8 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
      x, x0, expret, u = forward(dH_, dM, AQ, sp, K_forward_a, r_forward, real_tc=real_tc)
      all_x = hcat(all_x,x[:,2:end])
      all_x0 = vcat(all_x0,x0[2:end])
-     dH_.x_ini = x[:,end]
-     dH_.x0_ini = x0[end]
+     dH_.x = x[:,end]
+     dH_.x0 = x0[end]
    end
 
    # Simulate last periods
@@ -491,7 +496,7 @@ function simulatesw(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{Sub
 function simulate_percport(dH::MSDDPData, ret_test::Array{Float64,2}, x_p::Array{Float64,1})
    T_test = size(ret_test,2)
    x = Array(Float64,dH.N+1, T_test)
-   x[:,1] = vcat(dH.x0_ini,dH.x_ini)
+   x[:,1] = vcat(dH.x0,dH.x)
    cost = 0.0
    for t = 2:T_test
      # Evaluate transaction costs

@@ -8,18 +8,21 @@ T = 11
 K = 1
 S = 100
 α = 0.95
+W_ini = 1.0
 x_ini = zeros(N)
-x0_ini = 1.0
+x0_ini = W_ini
 c = 0.00
 M = 9999999
 γ = 0.1
 S_LB = 1000
+S_LB = 100
 S_FB = 1
 GAPP = 1
 Max_It = 100
 α_lB = 0.9
 
-dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, W_ini, c, M, γ,
+                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
 
 start_train = 1
 n_rows_train = 100

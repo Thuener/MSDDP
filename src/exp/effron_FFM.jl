@@ -14,7 +14,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
   info("Simulating MSDDP...")
   for se = 1:Sc
     x, x0 = MSDDP.forward(dH, dM, AQ, sp, states[:,se], rets_[:,:,se])
-    ret_p[1,se] = x0[end]+sum(x[:,end])-1
+    ret_p[1,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   LB =0; UB =0; LB_c =0; AQ =0; sp =0;
@@ -32,7 +32,7 @@ function runOS(dH, dM, Sc, rets_, states, ret_p)
   info("Simulating One Step...")
   for se = 1:Sc
     x, x0 = MSDDP.forward(dH, dM, AQ, sp, states[:,se], rets_[:,:,se])
-    ret_p[2,se] = x0[end]+sum(x[:,end])-1.0
+    ret_p[2,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   H_l =0; sp =0; x =0; x0 =0;
@@ -49,7 +49,7 @@ function runOSFC(dH, dM, Sc, rets_, states, ret_p)
   info("Simulating One Step FC...")
   for se = 1:Sc
     x, x0 = MSDDP.forward(dH, dM, AQ, sp, states[:,se], rets_[:,:,se])
-    ret_p[3,se] = x0[end]+sum(x[:,end])-1.0
+    ret_p[3,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   u_l =0; Q_l =0; H_l =0; sp =0; x =0; x0 =0;

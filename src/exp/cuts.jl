@@ -48,19 +48,22 @@ T = 10
 K = 3
 S = 100
 α = 0.9
+W_ini = 1.0
 x_ini = zeros(N)
-x0_ini = 1.0
+x0_ini = W_ini
 c = 0.001
 M = 9999999#(1+maximum(r))^(T-1)*(sum(x_ini)+x0_ini)-(sum(x_ini)+x0_ini);
 γ = 1
 #Parameters
 S_LB = 500
+S_LB_inc = 100
 S_FB = 5
 GAPP = 1 # GAP mínimo em porcentagem
 Max_It = 100
 α_lB = 0.9
 
-dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini, x0_ini, W_ini, c, M, γ,
+                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
 
 file = "../C++/output/ken_1DInd_90a14"
 

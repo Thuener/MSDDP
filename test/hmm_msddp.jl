@@ -40,11 +40,13 @@ T = 13
 K = 3
 S = 500
 α = 0.9
-x_ini_s = [1.0;zeros(N)]
+W_ini = 1.0
+x_ini_s = [W_ini;zeros(N)]
 c = 0.005
 M = 9999999
 γ = 0.012
 S_LB = 300
+S_LB_inc = 100
 S_FB = 100
 GAPP = 1
 Max_It = 100
@@ -53,7 +55,8 @@ Max_It = 100
 γ = 0.003
 c = 0.01
 
-dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N+1, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
 
 file = "./test_hmm_msddp.csv"
 ret = readcsv(file, Float64)

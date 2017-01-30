@@ -22,7 +22,7 @@ function bestsamples_ttest(dS, output_dir, j)
     Ws = Array(Float64, Sc)
     for se = 1:Sc
       w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
-      Ws[se] = w-1.0
+      Ws[se] = w
     end
     MRets[i] = mean(Ws)
     info("Mean return simulation $(MRets[i])")
@@ -75,7 +75,7 @@ function beststate_ttest(dH, dF, dS, output_dir, j)
   for se = 1:Sc
     w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
     all_SDP[:,:,se] = hcat(x_ini,all)
-    Ws[se] = w-1.0
+    Ws[se] = w
   end
   MRets[2,1] = mean(Ws)
   γ_srt = string(dH.γ)[3:end]
@@ -105,7 +105,7 @@ function beststate_ttest(dH, dF, dS, output_dir, j)
       count_states .+= StatsBase.counts(states,1:dH.K)
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,s], states)
       all_c[:,:,s] = vcat(x0',x)
-      ret_c[s] = x0[end]+sum(x[:,end])-1
+      ret_c[s] = x0[end]+sum(x[:,end])
     end
     debug("count_states =", count_states)
     MRets[1,k] = mean(ret_c)
@@ -189,11 +189,13 @@ T = 13
 K = 4
 S = 750
 α = 0.9
-x_ini_s = [1.0;zeros(N)]
+W_ini = 1.0
+x_ini_s = [W_ini;zeros(N)]
 c = 0.00
 M = 9999999
 γ = 0.012
 S_LB = 300
+S_LB_inc = 100
 S_FB = 100
 GAPP = 1
 Max_It = 100
@@ -248,7 +250,8 @@ if args["stat"]
       dS.γ = γ
       info("Start testes with γ = $(dS.γ)")
 
-      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                      S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
       output_dir = "../../output/"
 
       best_ks[i_γ] = beststate_ttest(dH, dF, dS, output_dir, j)

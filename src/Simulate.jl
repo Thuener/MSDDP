@@ -16,7 +16,7 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
   T_series = size(series,2)
   its=floor(Int,(T_series-nrows_train)/(R))
 
-  all_x = vcat(dH.x0_ini,dH.x_ini)
+  all_x = vcat(dH.x0,dH.x)
   if R > dH.T-1
     error("R $R has to be last than or equal dH.T-1 $(dH.T-1)")
   end
@@ -46,8 +46,8 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
       all_x = hcat(all_x,vcat(x0[2:end]',x[:,2:end]))
       dH.T = T_init
     end
-    dH.x_ini = all_x[2:end,end]
-    dH.x0_ini = all_x[1,end]
+    dH.x = all_x[2:end,end]
+    dH.x0 = all_x[1,end]
     writecsv(string(output_dir,file_name,"R$(R)k$(string(dH.K))g$(string(dH.γ)[3:end])_all.csv"),all_x')
   end
   return all_x

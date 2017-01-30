@@ -27,7 +27,7 @@ function evaluateGAP(dH, dM, Sc, rets_, states_, output_dir, name)
   info("Simulating MSDDP...")
   for se = 1:Sc
     x, x0 = MSDDP.forward(dH, dM, AQ, sp, states[:,se], rets_[:,:,se])
-    LBs[se] = x0[end]+sum(x[:,end])-1
+    LBs[se] = x0[end]+sum(x[:,end])
   end
 
   # Evaluating real GAP

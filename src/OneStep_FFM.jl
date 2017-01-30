@@ -19,16 +19,16 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3},
   @variable(Q, y[1:dH.K,1:dH.S] >= 0)
   @variable(Q, θ[1:dH.K,1:dH.S] <= dH.M)
 
-  @objective(Q, Max, - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
+  @objective(Q, Max, dH.W_ini - dH.c*sum{b[i] + d[i], i = 1:dH.N} +
                   + sum{((vecdot((1+ret[:,k,s]),u)+u0)*V_tp1[k])*p_state[k]*dM.ps_k[s,k], k = 1:dH.K, s = 1:dH.S})
 
-  cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0_ini).idx
+  cash = @constraint(Q, u0 + sum{(1+dH.c)*b[i] - (1-dH.c)*d[i], i = 1:dH.N} == dH.x0).idx
   assets = Array(Int64,dH.N)
   for i = 1:dH.N
-    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x_ini[i]).idx
+    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dH.x[i]).idx
   end
   risk =  @constraint(Q,-(z - sum{p_state[k]*dM.ps_k[s,k]*y[k,s] , k = 1:dH.K, s = 1:dH.S}/(1-dH.α))
-                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
+                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x)+dH.x0)).idx
 
   @constraint(Q, trunc[k = 1:dH.K, s = 1:dH.S], y[k,s] >= z - sum{ret[i,k,s]*u[i], i = 1:dH.N})
   sp = MSDDP.SubProbData( cash, assets, risk )

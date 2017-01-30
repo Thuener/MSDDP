@@ -13,7 +13,7 @@ function rollinghorizon(dH, dM, states, series, R; real_tc=0.0, myopic=false)
   T_series = size(series,2)
   its=floor(Int,(T_series)/(R))
 
-  all_x = vcat(dH.x0_ini,dH.x_ini)
+  all_x = vcat(dH.x0,dH.x)
   if R > dH.T-1
     error("R $R has to be last than or equal dH.T-1 $(dH.T-1)")
   end
@@ -32,8 +32,8 @@ function rollinghorizon(dH, dM, states, series, R; real_tc=0.0, myopic=false)
       all_x = hcat(all_x,vcat(x0[2:end]',x[:,2:end]))
       dH.T = T_init
     end
-    dH.x_ini = all_x[2:end,end]
-    dH.x0_ini = all_x[1,end]
+    dH.x = all_x[2:end,end]
+    dH.x0 = all_x[1,end]
   end
   return all_x
 end
@@ -141,16 +141,19 @@ T = 5 #TODO 22
 K = 3 #TODO 5
 S = 500 #TODO 1000
 α = 0.9
-x_ini_s = [1.0;zeros(N)]
+W_ini = 1.0
+x_ini_s = [W_ini;zeros(N)]
 c = 0.005
 M = 9999999
 γ = 0.02
 S_LB = 300
+S_LB_inc = 100
 S_FB = 10 #TODO 20
 GAPP = 1
 Max_It = 1#TODO 100
 α_lB = 0.9
-dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
 
 output_dir = "../../outputIN/"
 

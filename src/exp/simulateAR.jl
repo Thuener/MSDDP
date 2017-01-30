@@ -10,7 +10,8 @@ include("parametersAR.jl")
 dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parmeters
-dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
 
 # One Step data
 dO = OneStep.OSData(N, T, L, S, α, c, γ, true, x_ini_s[2:N+1], x_ini_s[1])
@@ -46,7 +47,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
   info("Simulating MSDDP...")
   for se = 1:Sc
     x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,se], states[:,se])
-    ret_p[1,se] = x0[end]+sum(x[:,end])-1
+    ret_p[1,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   LB =0; UB =0; LB_c =0; AQ =0; sp =0;
@@ -62,7 +63,7 @@ function runOS(dF, dO, z_l, rets_, z, ret_p)
   info("Simulating One Step...")
   for se = 1:Sc
     x, x0 = OneStep.forward(dO, dF, dS, β, z_l, z[:,se], rets_[:,:,se])
-    ret_p[2,se] = x0[end]+sum(x[:,end])-1.0
+    ret_p[2,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   H_l =0; sp =0; x =0; x0 =0;
@@ -80,7 +81,7 @@ function runOSFC(dF, dS, z_l, rets_, z, ret_p)
   info("Simulating One Step FC...")
   for se = 1:Sc
     x, x0 = OneStep.forward(dO, dF, dS, β, z_l, z[:,se], rets_[:,:,se])
-    ret_p[3,se] = x0[end]+sum(x[:,end])-1.0
+    ret_p[3,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
   u_l =0; Q_l =0; H_l =0; sp =0; x =0; x0 =0;

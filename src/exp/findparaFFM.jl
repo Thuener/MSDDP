@@ -116,11 +116,13 @@ T = 22
 K = 1
 S = 1000
 α = 0.9
-x_ini_s = [1.0;zeros(N)]
+W_ini = 1.0
+x_ini_s = [W_ini;zeros(N)]
 c = 0.005
 M = 9999999
 γ = 0.02
 S_LB = 300
+S_LB_inc = 100
 S_FB = 100
 GAPP = 1
 Max_It = 100
@@ -143,7 +145,8 @@ if args["stat"]
   its = 10
   best_ks = Array(Float64,its)
   for i=1:its
-    dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+    dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                    S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
     output_dir = "../../output5/"
 
     best_ks[i] = beststate_slidingwindow(dH, dFF, ln_index)
@@ -165,7 +168,8 @@ if args["samp"]
       c = cs[i_c]
       info("Start testes with γ = $(γ) and c = $(c)")
 
-      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                      S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
       output_dir = "../../output5/"
 
       bests_sam[i_γ,i_c] = sampleslhs_stabUB(dH, dFF, ln_index, output_dir)

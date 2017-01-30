@@ -23,7 +23,7 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3},
 
   wealth = @constraint(V, u0 +sum{u[i], i = 1:dH.N} == 1).idx
   risk =  @constraint(V,-(z - sum{p_state[k]*dM.ps_k[s,k]*y[k,s] , k = 1:dH.K, s = 1:dH.S}/(1-dH.α))
-                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x_ini)+dH.x0_ini)).idx
+                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x)+dH.x0)).idx
 
   @constraint(V, trunc[k = 1:dH.K, s = 1:dH.S], y[k,s] >= z - vecdot(ret[:,k,s],u))
   return V

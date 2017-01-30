@@ -73,7 +73,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData
       #states = predict(model,ln_ret[:,1:dH.T-1,s]')
       states = predict(model,y[:,1:dH.T-1,s]')
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[:,1:dH.T-1,s], states)
-      ret_c[s] = x0[end]+sum(x[:,end])-1
+      ret_c[s] = x0[end]+sum(x[:,end])
       all_c[:,:,s] = vcat(x0',x)
     end
     MRets[i] = mean(ret_c)
@@ -143,7 +143,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
       # Simulate with HMM serie
       #ret_hmm = ones(dH.N,1)*maximum(ret_hmm,1)
       all_hmm = simulate_percport(dH, ret_hmm, [1.0;zeros(N)], [0;ones(dH.N)/(dH.N)])
-      ret_hmm_p[se] = sum(all_hmm[:,2:end])-1
+      ret_hmm_p[se] = sum(all_hmm[:,2:end])
 
 
       # Simulate with AR series
@@ -153,7 +153,7 @@ function beststate_equal(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
 
       #ret_ar = ones(dH.N,1)*maximum(ret_ar,1)
       all_ar = simulate_percport(dH, ret_ar, [1.0;zeros(N)], [0;ones(dH.N)/(dH.N)])
-      ret_ar_p[se] = sum(all_ar[:,2:end])-1
+      ret_ar_p[se] = sum(all_ar[:,2:end])
     end
     if k > 1
       ttest = UnequalVarianceTTest(ret_hmm_p,ret_hmm_p_last)
@@ -223,7 +223,7 @@ function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
       #states = predict(model,ln_ret[:,1:dH.T-1,s]')
       states = predict(model,y[:,1:dH.T-1,s]')
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_e[1:dH.N,1:dH.T-1,s], states)
-      ret_c[s] = x0[end]+sum(x[:,end])-1
+      ret_c[s] = x0[end]+sum(x[:,end])
       all_c[:,:,s] = vcat(x0',x)
     end
     MRets[k] = mean(ret_c)
@@ -348,11 +348,13 @@ T = 13
 K = 4
 S = 500
 α = 0.9
-x_ini_s = [1.0;zeros(N)]
+W_ini = 1.0
+x_ini_s = [W_ini;zeros(N)]
 c = 0.005
 M = 9999999
 γ = 0.012
 S_LB = 300
+S_LB_inc = 100
 S_FB = 100
 GAPP = 1
 Max_It = 100
@@ -382,7 +384,8 @@ if args["stat"]
       c = cs[i_c]
       info("Start testes with γ = $(γ) and c = $(c)")
 
-      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                      S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
       output_dir = "../../output2/"
 
       best_ks[i_γ,i_c] = beststate_ttest(output_dir, dH, dF, ln_ret, T_l, Sc)
@@ -402,7 +405,8 @@ if args["samp"]
       c = cs[i_c]
       info("Start testes with γ = $(γ) and c = $(c)")
 
-      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
+                      S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
       output_dir = "../../output/"
 
       bests_sam[i_γ,i_c] = bestsamples_ttest(output_dir, dH, dF, ln_ret, T_l, Sc)

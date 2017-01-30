@@ -17,8 +17,8 @@ type OSData
   c::Float64
   γ::Float64
   Mod::Bool
-  x_ini::Array{Float64,1}
-  x0_ini::Float64
+  x::Array{Float64,1}
+  x0::Float64
 end
 
 type SubProbData
@@ -38,14 +38,14 @@ function createmodel(dO::OSData, p::Array{Float64,1}, r::Array{Float64,2}, Q_tp1
 
   @objective(Q, Max, sum{p[s]*(vecdot(1+r[:,s],u)+u0)*Q_tp1[s], s = 1:dO.S})
 
-  cash = @constraint(Q, u0 + sum{(1+dO.c)*b[i] - (1-dO.c)*d[i], i = 1:dO.N} == dO.x0_ini).idx
+  cash = @constraint(Q, u0 + sum{(1+dO.c)*b[i] - (1-dO.c)*d[i], i = 1:dO.N} == dO.x0).idx
   assets = Array(Int64,dO.N)
   for i = 1:dO.N
-    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dO.x_ini[i]).idx
+    assets[i] = @constraint(Q, u[i] - b[i] + d[i] == dO.x[i]).idx
   end
 
   risk =  @constraint(Q,-(z - sum{p[s]*y[s] , s = 1:dO.S}/(1-dO.α))
-                          + dO.c*sum{b[i] + d[i], i = 1:dO.N} <= dO.γ*(sum(dO.x_ini)+dO.x0_ini)).idx
+                          + dO.c*sum{b[i] + d[i], i = 1:dO.N} <= dO.γ*(sum(dO.x)+dO.x0)).idx
 
   @constraint(Q, trunc[s = 1:dO.S], y[s] >= z - vecdot(r[:,s],u))
   sp = SubProbData( cash, assets, risk )
@@ -57,8 +57,8 @@ function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, 
     rets_t::Array{Float64,2})
   x_trial = zeros(dO.N,dO.T)
   x0_trial = zeros(dO.T)
-  x_trial[1:dO.N,1] = dO.x_ini
-  x0_trial[1] = dO.x0_ini
+  x_trial[1:dO.N,1] = dO.x
+  x0_trial[1] = dO.x0
   p_s = ones(dS.S)*1/dS.S
 
   for t = 1:dO.T-1

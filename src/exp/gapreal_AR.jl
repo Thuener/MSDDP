@@ -20,7 +20,7 @@ function evaluateGAP(dF, dS, z_l, rets, z, name,output_dir)
       writeLP(Q,"prob.lp")
       error("Can't solve the problem status:",status)
     end
-    UBs[i] = getobjectivevalue(Q)-1
+    UBs[i] = getobjectivevalue(Q)
   end
 
   # Evaluating the lower bound
@@ -28,7 +28,7 @@ function evaluateGAP(dF, dS, z_l, rets, z, name,output_dir)
   LBs = Array(Float64,Sc)
   for se = 1:Sc
     W, all = SDP.forward(dS, dF, β, z_l, z[:,se], rets_[:,:,se])
-    LBs[se] = W-1.0
+    LBs[se] = W
   end
 
   # Evaluating real GAP
