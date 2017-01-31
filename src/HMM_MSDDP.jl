@@ -117,12 +117,14 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pi
   p_s = ones(dH.S, dH.K)*1.0/dH.S
 
   ## Use HMM for each state in LHS
-  r = zeros(dH.N, dH.K, dH.S)
+  r = zeros(dH.T, dH.N, dH.K, dH.S)
   for k = 1:dH.K
     μ = reshape(model[:means_][k,:],dH.N)
     Σ = reshape(model[:covars_][k,:,:], dH.N, dH.N)
 		debug("μ= ", μ)
-    r[:,k,:] = lhsnorm(μ, Σ, dH.S, rando=false)'
+		for t = 1:dH.T
+    	r[t,:,k,:] = lhsnorm(μ, Σ, dH.S, rando=false)'
+		end
   end
   r = exp(r)-1
 

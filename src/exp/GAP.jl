@@ -26,7 +26,7 @@ dM, model = inithmm_ffm(lnret[1:F,:]', dFF, dH)
 cs = [0.01]#[0.005, 0.01,0.02]
 
 file = string(output_dir,file_name,"_ret.csv")
-dH.S_FB = 1 # One iteration one cut
+dH.S_FB = 5 # One iteration one cut
 dH.S_LB = 500 # fix amount of forwards
 # For each risk level (γ)
 @time for i_γ = 1:length(γs)
@@ -48,4 +48,4 @@ dH.S_LB = 500 # fix amount of forwards
 end
 
 
-run(`/home/tas/woofy.sh 62491240 "GAP"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

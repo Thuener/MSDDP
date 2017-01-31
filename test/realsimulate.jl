@@ -15,7 +15,7 @@ c = 0.00
 M = 9999999
 γ = 0.1
 S_LB = 1000
-S_LB = 100
+S_LB_inc = 100
 S_FB = 1
 GAPP = 1
 Max_It = 100
@@ -109,24 +109,29 @@ dM, model = inithmm(ret_train, dH)
 
 LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
 x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
-@test_approx_eq_eps x0 [1.0,0.8374101083489692,0.837910539884011,0.8485171787798974,0.8516174475089665,0.8483990234530903] 1e-3
-@test_approx_eq_eps sum(x,1) [0.0 0.16318748598390606 0.17535305739071833 0.16844862927323007 0.16150505363421508 0.14575683733183342] 1e-3
+@test_approx_eq_eps x0 [1.0 0.82014 0.845609 0.837851 0.857162 0.830954] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0 0.180077 0.167223 0.179511 0.156024 0.161469] 1e-3
 
 dM.k_ini = 2
 x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
-@test_approx_eq_eps x0 [1.0,0.8374101083489692,0.837910539884011,0.8485171787798974,0.8516174475089665,0.8483990234530903] 1e-3
-@test_approx_eq_eps sum(x,1) [0.0 0.16318748598390606 0.17535305739071833 0.16844862927323007 0.16150505363421508 0.14575683733183342] 1e-3
+@test_approx_eq_eps x0 [1.0  0.82014  0.845609  0.837851  0.857162  0.830954] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0  0.180077  0.167223  0.179511  0.156024  0.161469] 1e-3
 
 dH.γ = 0.1
 dH.α = 0.95
 dH.T = 10
+r = zeros(dH.T, dH.N, dH.K, dH.S)
+for t = 1:dH.T
+  r[t,:,:,:] = dM.r[1,:,:,:]
+end
+dM.r = r
 LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
 x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
-@test_approx_eq_eps x0 [1.0,0.0,0.0,0.0,0.0,0.0] 1e-3
-@test_approx_eq_eps sum(x,1) [0.0 1.010999999961244 1.100675699952306 1.1116824570038912 1.0811111894249712 0.9422965127138037] 1e-3
+@test_approx_eq_eps x0 [1.0 0.0 0.0 0.0 0.0 0.0] 1e-3
+@test_approx_eq_eps sum(x,1) [0.0 1.011 1.10068 1.11168 1.08111 0.942297] 1e-3
 
 dH.T = 2
 LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
 x, x0 = simulatesw(dH, dM, AQ, sp, ret_test', k_test)
-@test_approx_eq_eps x0 [1.0,0.0,0.0,0.0,0.0,0.0] 1e-3
+@test_approx_eq_eps x0 [1.0 0.0 0.0 0.0 0.0 0.0] 1e-3
 @test_approx_eq_eps sum(x,1) [0.0  1.011  1.10068  1.11168  1.08111  0.942297] 1e-3

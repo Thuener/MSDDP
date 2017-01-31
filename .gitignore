@@ -1,5 +1,7 @@
 /output/*
 /input/*
+/Logs/*
+/figuras/*
 /Experiments/*.txt
 *.txt
 *.lp

@@ -19,11 +19,12 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3},
   @variable(V, y[1:dH.K,1:dH.S] >= 0)
   @variable(V, θ[1:dH.K,1:dH.S] <= dH.M)
 
-  @objective(V, Max, sum{((vecdot((1+ret[:,k,s]),u)+u0)*V_tp1[k])*p_state[k]*dM.ps_k[s,k], k = 1:dH.K, s = 1:dH.S})
+  @objective(V, Max, sum(((vecdot((1+ret[:,k,s]),u)+u0)*V_tp1[k])*p_state[k]*dM.ps_k[s,k]
+                    for k = 1:dH.K, s = 1:dH.S))
 
-  wealth = @constraint(V, u0 +sum{u[i], i = 1:dH.N} == 1).idx
-  risk =  @constraint(V,-(z - sum{p_state[k]*dM.ps_k[s,k]*y[k,s] , k = 1:dH.K, s = 1:dH.S}/(1-dH.α))
-                          + dH.c*sum{b[i] + d[i], i = 1:dH.N} <= dH.γ*(sum(dH.x)+dH.x0)).idx
+  wealth = @constraint(V, u0 +sum(u[i] for i = 1:dH.N) == 1).idx
+  risk =  @constraint(V,-(z - sum(p_state[k]*dM.ps_k[s,k]*y[k,s] for k = 1:dH.K, s = 1:dH.S)/(1-dH.α))
+                          + dH.c*sum(b[i] + d[i] for i = 1:dH.N) <= dH.γ*(sum(dH.x)+dH.x0)).idx
 
   @constraint(V, trunc[k = 1:dH.K, s = 1:dH.S], y[k,s] >= z - vecdot(ret[:,k,s],u))
   return V

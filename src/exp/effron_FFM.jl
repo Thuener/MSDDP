@@ -58,11 +58,10 @@ end
 #########################################################################################################################
 
 srand(123)
-γs = [0.05,0.1, 0.2,0.3]
-cs = [0.005,0.01,0.02]
-Ts = [12]#,24,48]
-
 include("parametersBM100.jl")
+γs = [0.01, 0.05, 0.1, 0.15]
+cs = [0.005, 0.008, 0.2]
+Ts = [12]#,24,48]
 T = dH.T = Ts[end]
 
 output_dir = "../../output/outputFFM/"
@@ -103,6 +102,7 @@ for dH.T in Ts
     dH.c = cs[i_c]
     for i_γ = 1:length(γs)
       dH.γ = γs[i_γ]
+      debug(dH)
       ret_p = Array(Float64,3,Sc)
       info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
       runMSDDP(dH, dM, Sc, rets_, states_, ret_p)
@@ -128,4 +128,4 @@ for dH.T in Ts
 end
 toc()
 
-run(`/home/tas/woofy.sh 62491240 "simulateAR"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

@@ -45,7 +45,7 @@ for se = 1:Sc
 end
 
 
-@test_approx_eq_eps mean(ws) 1.0114868681778884 1e-6
-@test_approx_eq_eps std(ws) 0.025142555140114615 1e-6
-@test_approx_eq_eps mean(all[1,:,:]) 0.8928728587066812  1e-6
-@test_approx_eq_eps mean(all[4,:,:]) 0.03838291640317532 1e-6
+@test_approx_eq_eps mean(ws) 1.01161 1e-4
+@test_approx_eq_eps std(ws) 0.02505 1e-4
+@test_approx_eq_eps mean(all[1,:,:]) 0.893047  1e-4
+@test_approx_eq_eps mean(all[4,:,:]) 0.0378636 1e-4

@@ -47,4 +47,4 @@ ret[5,:] = fetch(remote5)
 =#
 writecsv(string(output_dir,file_name,"_ret_k$(string(dH.K))g$(string(dH.γ)[3:end]).csv"),ret)
 
-run(`/home/tas/woofy.sh 62491240 "simulate"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

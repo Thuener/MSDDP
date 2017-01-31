@@ -68,11 +68,11 @@ dM, m = inithmm(ret', dH, T_l, Sc)
 order = Array(Int64,dH.K)
 found = true
 for k = 1:dH.K
-  if abs(mean(reshape(dM.r[1,k,:],dH.S)) - 0.008395323) < 1e-4
+  if abs(mean(reshape(dM.r[6,1,k,:],dH.S)) - 0.008395323) < 1e-4
     order[1] = k
-  elseif abs(mean(reshape(dM.r[1,k,:],dH.S)) - 0.002996800) < 1e-4
+  elseif abs(mean(reshape(dM.r[6,1,k,:],dH.S)) - 0.002996800) < 1e-4
       order[2] = k
-    elseif abs(mean(reshape(dM.r[1,k,:],dH.S)) - 0.015196632) < 1e-4
+    elseif abs(mean(reshape(dM.r[6,1,k,:],dH.S)) - 0.015196632) < 1e-4
       order[3] = k
     else
       found = false
@@ -80,9 +80,9 @@ for k = 1:dH.K
 end
 # Has to enter in one if every time
 @test found == true
-@test_approx_eq_eps mean(reshape(dM.r[:,order[1],:],dH.N,dH.S),2) [0.00839532360645153 0.010430380640150642  0.012686062611771737 -0.13354913446138864] 1e-6
-@test_approx_eq_eps mean(reshape(dM.r[:,order[2],:],dH.N,dH.S),2) [0.002996800086701159  0.005042811147145921 0.007042256239115454 -0.6852052890669273] 1e-6
-@test_approx_eq_eps mean(reshape(dM.r[:,order[3],:],dH.N,dH.S),2) [0.015196632580590699 0.022208399618642474 0.024857176445799788   1.4464545530498576] 1e-6
+@test_approx_eq_eps mean(reshape(dM.r[6,:,order[1],:],dH.N,dH.S),2) [0.00839532360645153 0.010430380640150642  0.012686062611771737 -0.13354913446138864] 1e-6
+@test_approx_eq_eps mean(reshape(dM.r[6,:,order[2],:],dH.N,dH.S),2) [0.002996800086701159  0.005042811147145921 0.007042256239115454 -0.6852052890669273] 1e-6
+@test_approx_eq_eps mean(reshape(dM.r[6,:,order[3],:],dH.N,dH.S),2) [0.015196632580590699 0.022208399618642474 0.024857176445799788   1.4464545530498576] 1e-6
 
 @test_approx_eq_eps sum(dM.ps_k,1) [1 1 1] 1e-6
 

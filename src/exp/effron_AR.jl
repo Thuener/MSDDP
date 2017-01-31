@@ -1,4 +1,4 @@
-# Simulate AR model from Brown
+# Simulate AR model from Brown and create an efficient frontier
 using MSDDP, HMM_MSDDP, AR, Util
 import OneStep, SDP
 using Distributions, Logging
@@ -96,6 +96,7 @@ for dH.T in Ts
     dH.c = dO.c = cs[i_c]
     for i_γ = 1:length(γs)
       dH.γ = dS.γ = dO.γ = γs[i_γ]
+      debug(dH)
       ret_p = SharedArray(Float64,3,Sc)
       info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
       runMSDDP(dH, dM, Sc, rets_, states, ret_p)
@@ -122,4 +123,4 @@ for dH.T in Ts
 end
 toc()
 
-run(`/home/tas/woofy.sh 62491240 "simulateAR"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

@@ -30,4 +30,4 @@ for i_γ = 1:length(γs)
   end
 end
 
-run(`/home/tas/woofy.sh 62491240 "simulateW"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

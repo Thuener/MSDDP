@@ -195,4 +195,4 @@ ret[5]= runMSDDP_TD_TC(deepcopy(dH), dM, series, states)
 
 writecsv(string(output_dir,file_name,"_ret.csv"),vcat(dH.γ,dH.c,ret))
 
-run(`/home/tas/woofy.sh 62491240 "simulateFFM_in"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)

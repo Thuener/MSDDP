@@ -5,7 +5,7 @@ tests = ["lhs",
          "realsimulate",
          "sdp"]
 
-for t in tests
+@sync @parallel for t in tests
     fp = "$(t).jl"
     println("running $(fp) ...")
     @time evalfile(fp)

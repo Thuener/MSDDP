@@ -65,10 +65,10 @@ function createmodel(dS::SDPData, p::Array{Float64,1}, r::Array{Float64,2}, Q_tp
   @variable(Q, z)
   @variable(Q, y[1:dS.S] >= 0)
 
-  @objective(Q, Max, sum{p[s]*(vecdot(1+r[:,s],u)+u0)*Q_tp1[s], s = 1:dS.S})
+  @objective(Q, Max, sum(p[s]*(vecdot(1+r[:,s],u)+u0)*Q_tp1[s] for s = 1:dS.S))
 
-  wealth = @constraint(Q, u0 +sum{u[i], i = 1:dS.N} == 1).idx
-  risk =  @constraint(Q,-(z - sum{p[s]*y[s] , s = 1:dS.S}/(1-dS.α)) <= dS.γ).idx
+  wealth = @constraint(Q, u0 +sum(u[i] for i = 1:dS.N) == 1).idx
+  risk =  @constraint(Q,-(z - sum(p[s]*y[s] for s = 1:dS.S)/(1-dS.α)) <= dS.γ).idx
 
   @constraint(Q, trunc[s = 1:dS.S], y[s] >= z - vecdot(r[:,s],u))
   #sp = SubProbData( cash, assets, risk )

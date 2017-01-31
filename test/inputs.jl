@@ -33,25 +33,25 @@ dM, m = inithmm(ret, dH)
 
 
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.0943571 1e-4
-@test_approx_eq_eps UB       0.0940507 1e-4
+@test_approx_eq_eps mean(LB) 1.0943571 1e-4
+@test_approx_eq_eps UB       1.0940507 1e-4
 
 # Changing some parameters
 info("Test with same base changing some parameters")
 dH.γ = 0.01
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.012069 1e-4
-@test_approx_eq_eps UB       0.012075 1e-4
+@test_approx_eq_eps mean(LB) 1.012397 1e-4
+@test_approx_eq_eps UB       1.012393 1e-4
 
 dH.α = 0.90
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.014320 1e-4
-@test_approx_eq_eps UB       0.014329 1e-4
+@test_approx_eq_eps mean(LB) 1.014320 1e-4
+@test_approx_eq_eps UB       1.014329 1e-4
 
 dH.T = 2
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.0015821 1e-4
-@test_approx_eq_eps UB       0.0015821 1e-4
+@test_approx_eq_eps mean(LB) 1.0015821 1e-4
+@test_approx_eq_eps UB       1.0015821 1e-4
 
 # Changing the number of states
 dH.K = 3
@@ -76,23 +76,29 @@ end
 
 dM.k_ini = order[1]
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.002671 1e-4
-@test_approx_eq_eps UB       0.002671 1e-4
+@test_approx_eq_eps mean(LB) 1.002671 1e-4
+@test_approx_eq_eps UB       1.002671 1e-4
 
 dM.k_ini = order[2]
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0 1e-4
-@test_approx_eq_eps UB       0 1e-4
+@test_approx_eq_eps mean(LB) 1 1e-4
+@test_approx_eq_eps UB       1 1e-4
 
 dM.k_ini = order[3]
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.0028581 1e-4
-@test_approx_eq_eps UB       0.0028581 1e-4
+@test_approx_eq_eps mean(LB) 1.0027506 1e-4
+@test_approx_eq_eps UB       1.0027506 1e-4
 
 dH.γ = 0.1
 dH.α = 0.95
 dH.T = 10
 dM.k_ini = order[2]
+r = zeros(dH.T, dH.N, dH.K, dH.S)
+for t = 1:dH.T
+  r[t,:,:,:] = dM.r[1,:,:,:]
+end
+dM.r = r
+
 LB, UB = sddp(dH, dM)
-@test_approx_eq_eps mean(LB) 0.04428 1e-2
-@test_approx_eq_eps UB       0.04243 1e-2
+@test_approx_eq_eps mean(LB) 1.04428 1e-2
+@test_approx_eq_eps UB       1.04243 1e-2

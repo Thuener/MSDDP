@@ -415,4 +415,4 @@ if args["samp"]
   end
 end
 
-run(`/home/tas/woofy.sh 62491240 "Finish FindParameters"`)
+run(`/home/tas/woofy.sh 62491240 "Finish $(@__FILE__) "`)
