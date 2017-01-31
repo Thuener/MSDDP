@@ -1,26 +1,27 @@
+addprocs(4)
 #=
   Simulate MSDDP for markovian factors model
    multiple times to find the GAP for the "real" problem
 =#
 using MSDDP, HMM_MSDDP, FFM, Util
 using Distributions, Logging, JuMP, JLD
-Logging.configure(level=Logging.DEBUG)
 
 function evaluateGAP(dH, dM, Sc, rets_, states_, output_dir, name)
   # Evaluating the upper bound
   SampLB = 10
-  UBs = Array(Float64,SampLB)
+  UBs = SharedArray(Float64,SampLB)
   AQ = sp =0
-  list_firststage = Array(Float64, dH.N+1, SampLB)
-  for i=1:SampLB
+  list_firststage = SharedArray(Float64, dH.N+1, SampLB)
+  @sync @parallel for i=1:SampLB
+    Logging.configure(level=Logging.DEBUG)
     info("Memory use $(memuse())")
     info("Training MSDDP...")
     @time LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB,
       list_UB, list_firstu = MSDDP.sddp(dH, dM;stabUB=0.05)
     UBs[i] = UB
     list_firststage[:,i] =  list_firstu[:,end]
-    writecsv("$(output_dir)firststage_$name.csv", list_firststage)
   end
+  writecsv("$(output_dir)firststage_$name.csv", list_firststage)
 
   # Evaluating the lower bound
   LBs = Array(Float64,Sc)
@@ -40,6 +41,7 @@ end
 
 
 srand(123)
+Logging.configure(level=Logging.DEBUG)
 include("parametersBM100.jl")
 
 output_dir = "../../output/outputFFM/"

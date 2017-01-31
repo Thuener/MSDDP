@@ -6,6 +6,7 @@ import FFM
 #addprocs(3)
 
 srand(123)
+Logging.configure(level=Logging.DEBUG)
 include("parametersBM100.jl")
 
 output_dir = "../../output/outputFFM/"
