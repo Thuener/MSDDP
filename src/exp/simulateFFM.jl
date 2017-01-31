@@ -1,36 +1,24 @@
+# Simulate the Farma French Model
 #addprocs(3)
 using Simulate, MSDDP
 
-#srand(123)
+srand(123)
 
-#Parameters
-N = 30 # TODO 25
-T = 22
-K = 3
-S = 1000 #TODO 1000
-α = 0.9
-x_ini_s = [1.0;zeros(N)]
-c = 0.005
-M = 9999999
-γ = 0.02 #TODO 0.08
-S_LB = 300
-S_FB = 10
-GAPP = 1
-Max_It = 100
-α_lB = 0.9
-dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], c, M, γ, S_LB, S_FB, GAPP, Max_It, α_lB )
+Logging.configure(level=Logging.DEBUG)
+include("parametersBM100.jl")
+#dH.T = T = 13
 
-output_dir = "../../output3/"
+output_dir = "../../output/SimulateFFM/"
 
 # Read series
-F =3 #TODO # number of factors
+F =5 # number of factors
 file_dir = "../../input/"
-file_name = "3FF_Ind30_Daily_small" #TODO
+file_name = "5FF_BM100_Large"
 file = string(file_dir,file_name,".csv")
 series = readcsv(file, Float64)'
 
-R = 21 #TODO 6 # Regression for FFM and number o test samples(avoid border effect, has to be lower than dH.T-1)
-nrows_train = 1759 #6564 #966 #522 # TODO 438 # 882
+R = 11 # Regression for FFM and number o test samples(avoid border effect, has to be lower than dH.T-1)
+nrows_train = 618 #TODO 318
 its=floor(Int,(size(series,2)-nrows_train)/(R))
 series = series[:,1:nrows_train+(R)*its]
 ret = zeros(Float64,5,(R)*its+1)

@@ -37,7 +37,7 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     states = predict(model,lnret_test[1:F,:]')
     if myopic
       x, x0 = simulatesw(dH, dM, AQ, sp, ret_test[F+1:end,:], states; real_tc=real_tc)
-      all_x = hcat(all_x,vcat(x0',x))
+      all_x = hcat(all_x,vcat(x0[2:end]',x[:,2:end]))
     else
       dH.T = R+1
       states = predict(model,lnret_test[1:F,:]')
