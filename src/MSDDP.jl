@@ -102,7 +102,7 @@ function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3}, p_state::
   @variable(Q, θ[1:dH.K,1:dH.S] <= dH.M)
 
   @objective(Q, Max, - dH.c*sum(b[i] + d[i] for i = 1:dH.N) +
-                  + sum((sum(ret[i,k,s]*u[i] for i = 1:dH.N) + θ[k,s])*p_state[k]*dM.ps_k[s,k]
+                  sum((sum(ret[i,k,s]*u[i] for i = 1:dH.N) + θ[k,s])*p_state[k]*dM.ps_k[s,k]
                   for k = 1:dH.K, s = 1:dH.S))
 
   cash = @constraint(Q, u0 + sum((1+dH.c)*b[i] - (1-dH.c)*d[i] for i = 1:dH.N) == dH.x0).idx
@@ -189,8 +189,8 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
     u = getvariable(Q,:u)
     p_state = dM.P_K[K_forward[t],:]'
     @expression(Q, B_imed, - dH.c*sum(b[i] + d[i] for i = 1:dH.N) +
-             sum((sum(dM.r[t+1,i,j,s]*u[i] for i = 1:dH.N) )*p_state[j]*dM.ps_k[s,j]
-             for j = 1:dH.K, s = 1:dH.S) )
+             sum((sum(dM.r[t+1,i,k,s]*u[i] for i = 1:dH.N) )*p_state[k]*dM.ps_k[s,k]
+             for k = 1:dH.K, s = 1:dH.S) )
 
     FO_forward += getvalue(B_imed)
 
@@ -268,7 +268,8 @@ function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Fl
       θ[j,s] <= α[t,j] + β[1,t,j]*u0 + sum(β[i+1,t,j]*(1+dM.r[t+1,i,j,s])*u[i] for i = 1:dH.N))
 end
 
-function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, stabUB=0.5, fastLBcal=true)
+function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false,
+              stabUB=0.5, fastLBcal=true, file="")
 
   x_trial = []
   x0_trial = []
@@ -277,7 +278,7 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
   K_forward = Array(Int64,dH.T)
 
   AQ, sp = createmodels( dH, dM, LP )
-  quatil = quantile(Normal(),dH.α_lB)
+  quantil = quantile(Normal(),dH.α_lB)
 
   GAP = 100.0
   It = 0
@@ -327,10 +328,10 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
       list_firstu = hcat(list_firstu,vcat(u0,u))
 
       debug("FO_forw = $FO_forward, UB = $UB, stabUB $(abs(UB/UB_last -1)*100)")
-      if abs(UB/UB_last -1)*100 < stabUB || UB < eps_UB || isnan(abs(UB/UB_last -1)*100)
+      if fastLBcal && (abs(UB/UB_last -1)*100 < stabUB || UB < eps_UB || isnan(abs(UB/UB_last -1)*100))
         it_stable += 1
         if it_stable >= 5
-          if dH.S_LB < 30*S_LB_Ini && fastLBcal
+          if dH.S_LB < 30*S_LB_Ini
             dH.S_LB = round(Int64,dH.S_LB + dH.S_LB_inc)
             info("Stable UB Increasing S_LB for $(dH.S_LB)")
             if parallel
@@ -365,34 +366,34 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
       LB[s_f] = FO_forward
       sumLB += FO_forward
 
-      meanLB = sumLB/s_f
-      GAP_mean = 100*(UB - meanLB)/UB
       if fastLBcal
-        # If the GAP_mean is lower then dH.GAPP( the GAP is almost close)
-        # doubles the number of scenarios used in LB
-        if doubleS_LB == false && GAP_mean < dH.GAPP
-          doubleS_LB = true
-          dH.S_LB = round(Int64,dH.S_LB + dH.S_LB_inc)
-          info("GAP_mean < dH.GAPP increasing S_LB for $(dH.S_LB)")
-          if parallel
-            LB = vcat(LB,SharedArray(Float64,dH.S_LB_inc))
-          else
-            LB = vcat(LB,Array(Float64,dH.S_LB))
-          end
-        end
         # Start testing GAP_mean after S_LB_Ini/3 simulations
         if s_f >= S_LB_Ini/3
           meanLB = sumLB/s_f
           GAP_mean = 100*(UB - meanLB)/UB
           if GAP_mean > dH.GAPP*3 && it_stable < 10
+            meanLB = sumLB/s_f
+            LB_conserv = (meanLB - quantil * std(LB[1:s_f])/sqrt(s_f))
+            GAP = 100*(UB - LB_conserv)/UB
             info("GAP_mean $GAP_mean is higher than $(dH.GAPP*3) using $s_f Forwards. Aborting LB evaluation.")
             break
+          # If the GAP_mean is lower then dH.GAPP( the GAP is almost close)
+          # doubles the number of scenarios used in LB
+          elseif doubleS_LB == false && GAP_mean < dH.GAPP
+            doubleS_LB = true
+            dH.S_LB = round(Int64,dH.S_LB + dH.S_LB_inc)
+            info("GAP_mean < dH.GAPP increasing S_LB for $(dH.S_LB)")
+            if parallel
+              LB = vcat(LB,SharedArray(Float64,dH.S_LB_inc))
+            else
+              LB = vcat(LB,Array(Float64,dH.S_LB))
+            end
           end
         end
         # Start testing GAP after S_LB_Ini simulations
         if s_f >= S_LB_Ini
           meanLB = sumLB/s_f
-          LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
+          LB_conserv = (meanLB - quantil * std(LB[1:s_f])/sqrt(s_f))
           GAP = 100*(UB - LB_conserv)/UB
           if abs(GAP) < dH.GAPP
             info("SDDP ended: GAP LB $GAP is lower than $(dH.GAPP) using $s_f Forwards")
@@ -407,10 +408,14 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false, st
         end
       end
     end
-
+    if file != ""
+      save(string(file,"_MSDDP.jld"),"LB", LB[1:s_f],"UB", UB,"LB_c", LB_conserv,"x",
+        vcat(x0_trial',x_trial), "u", u_trial, "l_LB", list_LB, "l_UB", list_UB,
+        "l_firsu",list_firstu)
+    end
     if !fastLBcal # Evaluate the lower bound always using S_LB forwards
       meanLB = sumLB/s_f
-      LB_conserv = (meanLB - quatil * std(LB[1:s_f])/sqrt(s_f))
+      LB_conserv = (meanLB - quantil * std(LB[1:s_f])/sqrt(s_f))
       GAP = 100*(UB - LB_conserv)/UB
     end
     list_UB = vcat(list_UB,UB)
