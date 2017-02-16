@@ -60,7 +60,7 @@ end
 srand(123)
 include("parametersBM100.jl")
 γs = [0.01, 0.05, 0.1, 0.15]
-cs = [0.005, 0.008, 0.2]
+cs = [0.01]
 Ts = [12]#,24,48]
 T = dH.T = Ts[end]
 
