@@ -2,7 +2,6 @@
   Simulate MSDDP for markovian factors model
    multiple times to find the GAP for the "real" problem
 =#
-addprocs(3)
 
 using MSDDP, HMM_MSDDP, FFM, Util
 using Distributions, Logging, JuMP, JLD
@@ -17,33 +16,37 @@ function evaluateGAP(dH, dM, Sc, rets_, states_, output_dir, name)
     info("Memory use $(memuse())")
     info("Training MSDDP...")
     @time LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB,
-      list_UB, list_firstu = MSDDP.sddp(dH, dM;stabUB=0.05)
+      list_UB, list_firstu = MSDDP.sddp(dH, dM;stabUB=0.02)
     UBs[i] = UB
     list_firststage[:,i] =  list_firstu[:,end]
+    save("$(output_dir)realGapFFM_$name.jld", "UBs", UBs,"list_firststage",list_firststage)
+    AQ = sp = 0
+    gc()
   end
-  AQ = sp = 0
-  gc()
+
   # Last time has to store AQ and sp
   @time LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB,
-    list_UB, list_firstu = MSDDP.sddp(dH, dM;stabUB=0.05)
+    list_UB, list_firstu = MSDDP.sddp(dH, dM;stabUB=0.02)
   UBs[SampLB] = UB
   list_firststage[:,SampLB] =  list_firstu[:,end]
   writecsv("$(output_dir)firststage_$name.csv", list_firststage)
 
   # Evaluating the lower bound
-  LBs = SharedArray(Float64,Sc)
+  LBs = Array(Float64,Sc)
+  LBs2 = Array(Float64,Sc)
   info("Simulating MSDDP...")
-  @sync @parallel for se = 1:Sc
-    x, x0 = MSDDP.forward(dH, dM, AQ, sp, states_[:,se], rets_[:,:,se])
+  for se = 1:Sc
+    x, x0, FO_forward, u_trial = MSDDP.forward(dH, dM, AQ, sp, states_[:,se], rets_[:,:,se])
     LBs[se] = x0[end]+sum(x[:,end])
+    LBs2[se] = FO_forward
   end
 
   # Evaluating real GAP (%)
   GAP = mean(UBs) - mean(LBs)
   GAP += 	quantile(Normal(), 0.99)*sqrt(var(UBs)/length(UBs) +var(LBs)/length(LBs))
-  GAP /= mean(UBs)
+  GAP = GAP/mean(UBs)*100
 
-  save("$(output_dir)realGapFFM_$name.jld", "LBs", LBs, "UBs", UBs,"GAP",GAP)
+  save("$(output_dir)realGapFFM_$name.jld", "LBs", LBs, "UBs", UBs,"GAP",GAP, "LB_MSDDP",LB, "LBs2",LBs2)
   return GAP
 end
 
@@ -81,4 +84,4 @@ for se = 1:Sc
 end
 debug(dH)
 GAP = evaluateGAP(dH, dM, Sc, rets, states, output_dir, "")
-info("GAP is $(GAPs[i]) for $(dH.S) samples")
+info("GAP is $(GAP) for $(dH.S) samples")
