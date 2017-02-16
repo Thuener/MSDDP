@@ -1,8 +1,12 @@
-using Gadfly, Compose, DataFrames, Distributions
+using Gadfly, Compose, DataFrames, Distributions, JLD
 ################ PLot GAP ################
+println(ARGS)
+file = ARGS[1] # Name of the file to be processed
 
-LB = readcsv("5FF_BM100_Large_LB_g05_c01.csv")
-UB = readcsv("5FF_BM100_Large_UB_g05_c01.csv")
+data = load(file)
+
+LB = data["l_LB"][1:9,:]
+UB = data["l_UB"][1:9,:]
 
 df = DataFrame()
 q = quantile(Normal(),0.99)
@@ -21,6 +25,6 @@ coord = Coord.cartesian(xmin=1, xmax=size(UB,1)-1)
 p = plot(l1,l2, coord,
   Guide.ylabel("Objective value"),Guide.xticks(ticks=collect(1:1:maximum(df[:It]))),Guide.xlabel("MSDDP iteration(added cuts)"),
   Theme(line_width=2px,grid_line_width=1px),
-  Guide.manual_color_key("",["UB","LB"], ["red", "deepskyblue"]));
+  Guide.manual_color_key("",["UB","LB"], ["red", "deepskyblue"]))
 
 draw(SVG("gap_convergence.svg", 16cm, 10cm), p)

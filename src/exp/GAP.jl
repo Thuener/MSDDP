@@ -1,5 +1,5 @@
 using MSDDP, HMM_MSDDP, Simulate, Util
-using Distributions
+using Distributions, JLD
 using Logging
 
 import FFM
@@ -8,6 +8,7 @@ import FFM
 srand(123)
 Logging.configure(level=Logging.DEBUG)
 include("parametersBM100.jl")
+dH.GAPP = 0.2
 
 output_dir = "../../output/outputFFM/"
 
@@ -35,15 +36,13 @@ dH.S_LB = 500 # fix amount of forwards
   for i_c = 1:length(cs)
     dH.c = cs[i_c]
     debug(dH)
+    file = string(output_dir,file_name)
     LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB, List_UB,
-      list_firstu = sddp(dH, dM; stabUB=0.1,fastLBcal=false )#TODO 0.1 for BM100 and 0.5 for BM25
+      list_firstu = sddp(dH, dM;fastLBcal=false, file = string(output_dir,file_name) )
 
     γ_srt = string(dH.γ)[3:end]
     c_srt = string(dH.c)[3:end]
-
-    writecsv(string(output_dir,file_name,"_LB_g$(γ_srt)_c$(c_srt).csv"),list_LB)
-    writecsv(string(output_dir,file_name,"_UB_g$(γ_srt)_c$(c_srt).csv"),List_UB)
-    writecsv(string(output_dir,file_name,"_u_g$(γ_srt)_c$(c_srt).csv"),list_firstu)
+    save(string(output_dir,file_name,"_dataGAP.jld"), "l_LB", list_LB, "l_UB", list_UB, "l_firsu",list_firstu)
   end
 end
 

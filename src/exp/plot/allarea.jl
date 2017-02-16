@@ -1,4 +1,4 @@
-using Vega
+using Vega, JLD
 
 function plotall(us)
   n = size(us,1)
@@ -54,13 +54,19 @@ function plotall(us)
   return a
 end
 
-us = readcsv("5FF_BM100_Large_u_g06_c02.csv")
+
+println(ARGS)
+file = ARGS[1] # Name of the file to be processed
+data = load(file)
+
+us = data["l_firsu"]
 a = plotall(us)
 
-barplot(x = x, y = y, group = group, stacked = true)
+#=barplot(x = x, y = y, group = group, stacked = true)
 
 colorscheme!(a; palette = ["#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#e31a1c","#fdbf6f","#ff7f00","#cab2d6","#6a3d9a","#ffff99","#b15928","#b3e2cd","#fdcdac","#cbd5e8","#f4cae4","#e6f5c9","#fff2ae","#f1e2cc","#cccccc"])
 colorscheme!(a;  palette = ["#a6cee3","#fe002c","#2fff98","#d06eff","#6df131","#aa2a94","#a3d100",
                              "#0179ec","#fff55b","#b592ff","#00a82d","#ff82eb","#02e39e","#ff458e",
                              "#9cffcc","#f36e00","#64599f","#ffe488","#b4314a","#fff0d3","#426a6a",
                              "#ff8c4d","#ddc9ff","#596937","#ff9aa8","#845a36"])
+=#
