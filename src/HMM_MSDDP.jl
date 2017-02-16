@@ -13,14 +13,16 @@ export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPa
 
 function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
 			μ::Array{Float64,1}, σ::Array{Float64,1}; cov_type="full",init_p="")
-	μ_ = μ[1:n_states,:]
-	σ_ = σ[1:n_states,:,:]
+	μ_ = Array(Float64,n_states,1)
+	μ_[:,:] = μ[1:n_states,:]
+	σ_ = Array(Float64,n_states,1,1)
+	σ_[:,:,:] = σ[1:n_states,:,:]
 	debug("Before")
 	debug("μ_ ",μ_)
 	debug("σ_ ", σ_)
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,means_prior=μ_,covars_prior=σ_,
 		init_params=init_p)
-  data = (data')' # Has to be Array{Float64,2}
+  data = ((data')') # Has to be Array{Float64,2}
 
   model[:fit](data,lst)
 	debug("After")
@@ -150,8 +152,8 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
   ## Use HMM for each state in LHS
   r = zeros(dH.T,dH.N, dH.K, dH.S)
   for k = 1:dH.K
-		μ = model[:means_][k,:][:]
-    Σ = model[:covars_][k,:]
+		μ = model[:means_][k,1]
+    Σ = model[:covars_][k,1]
     z_tp1 = lhsnorm(μ, Σ, dH.S, rando=false)'
 		for t = 1:dH.T
 			ϵ = lhsnorm(zeros(dH.N+1), dF.Σ, dH.S, rando=true)'
