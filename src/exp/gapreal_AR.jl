@@ -1,5 +1,5 @@
 # Simulate AR multiple times to find the GAP for the "real" problem
-addprocs(10)
+#addprocs(10)
 
 using AR, Util
 import SDP
@@ -40,7 +40,7 @@ function evaluateGAP(dF, dS, z_l, rets, z, name,output_dir)
   # Evaluating real GAP(%)
   GAP = mean(UBs) - mean(LBs)
   GAP += 	quantile(Normal(), 0.99)*sqrt(var(UBs)/length(UBs) +var(LBs)/length(LBs))
-  GAP /= mean(UBs)
+  GAP = GAP/mean(UBs)*100
 
   save("$(output_dir)realGapAR_$name.jld", "LBs", LBs, "UBs", UBs,"GAP",GAP)
   return GAP
