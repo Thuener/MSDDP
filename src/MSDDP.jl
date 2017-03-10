@@ -8,7 +8,7 @@ using JLD
 
 export MKData, MSDDPData
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport, createmodels
-export chgConstrRHS
+export chgConstrRHSLow
 
 type MKData # Markov Data
   r::Array{Float64,4}
@@ -61,7 +61,7 @@ function chgConstrRHS(m::Model, idx::Int64, rhs::Number)
       if constr.ub == constr.lb
         sen = :(==)
       else
-        return :range
+        sen = :range
       end
     else
       sen = :(>=)
@@ -84,11 +84,73 @@ function chgConstrRHS(m::Model, idx::Int64, rhs::Number)
   end
 end
 
+function setrhslow!(model::CPLEX.Model, idx::Int, rhs::Number)
+  ncons = 1
+  stat = ccall(("CPXchgrhs",CPLEX.libcplex), Cint, (
+                    Ptr{Void},
+                    Ptr{Void},
+                    Cint,
+                    Ptr{Cint},
+                    Ptr{Cdouble}
+                    ),
+                    model.env.ptr, model.lp, ncons, Cint[idx-1;], float([rhs]))
+  if stat != 0
+      throw(CplexError(model.env, stat))
+  end
+end
+
+function chgConstrRHSLow(m::Model, idx::Int64, rhs::Number)
+  setrhslow!(m.internalModel.inner, idx, rhs)
+end
+
 function getDual(m::Model, idx::Int64)
     if length(m.linconstrDuals) != MathProgBase.numlinconstr(m)
         error("Dual solution not available. Check that the model was properly solved and no integer variables are present.")
     end
     return m.linconstrDuals[idx]
+end
+
+function getduallow(m::Model, idx::Int64)
+  duals = CPLEX.get_constr_duals(m.internalModel.inner)
+  return duals[idx]
+end
+
+function solvelow(m)
+  CPLEX.optimize!(m.internalModel.inner)
+  return :Optimal
+end
+
+# Evalute immediate benefit
+function immediatebenefitlow(dH, dM, K, ret, m)
+
+  u = getvaluelow(m, 2:dH.N+1)
+  b = getvaluelow(m, 2+dH.N:2*dH.N+1)
+  d = getvaluelow(m, 2*(1+dH.N):3*dH.N+1)
+
+  p_state = dM.P_K[K,:]'
+  B_imed = - dH.c*sum(b[i] + d[i] for i = 1:dH.N) +
+             sum((sum(ret[i,k,s]*u[i] for i = 1:dH.N) )*p_state[k]*dM.ps_k[s,k]
+             for k = 1:dH.K, s = 1:dH.S)
+  #B_imed = - dH.c*sum(b[i] + d[i]) + sum((sum(dM.r[t+1,i,k,s]*u[i]) )*p_state[k]*dM.ps_k[s,k])
+  return B_imed
+end
+
+function getobjectivevaluelow(m)
+  CPLEX.get_objval(m.internalModel.inner)
+end
+
+function getvaluelow(m, idx::Int64)
+  return CPLEX.get_solution(m.internalModel.inner)[idx]
+end
+
+function getvaluelow(m, ridx::UnitRange{Int64})
+  vidx = collect(ridx)
+  ret = Array(Float64,length(vidx))
+  values = CPLEX.get_solution(m.internalModel.inner)
+  for id = 1: length(vidx)
+    ret[id] = values[vidx[id]]
+  end
+  return ret
 end
 
 function createmodel(dH::MSDDPData, dM::MKData, ret::Array{Float64,3}, p_state::Array{Float64,1}, LP)
@@ -171,36 +233,28 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
     subp = sp[t,k]
     Q = AQ[t,k]
 
-    chgConstrRHS(Q, subp.cash, x0_trial[t])
-    chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+    chgConstrRHSLow(Q, subp.cash, x0_trial[t])
+    chgConstrRHSLow(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
     for i = 1:dH.N
-      chgConstrRHS(Q, subp.assets[i], x_trial[i,t])
+      chgConstrRHSLow(Q, subp.assets[i], x_trial[i,t])
     end
     # Resolve subprob in time t
-    status = solve(Q)
+    status = solvelow(Q)
     if status ≠ :Optimal
      writeLP(Q,"prob.lp")
      error("Can't solve the problem status:",status)
     end
 
     # Evalute immediate benefit
-    b = getvariable(Q,:b)
-    d = getvariable(Q,:d)
-    u = getvariable(Q,:u)
-    p_state = dM.P_K[K_forward[t],:]'
-    @expression(Q, B_imed, - dH.c*sum(b[i] + d[i] for i = 1:dH.N) +
-             sum((sum(dM.r[t+1,i,k,s]*u[i] for i = 1:dH.N) )*p_state[k]*dM.ps_k[s,k]
-             for k = 1:dH.K, s = 1:dH.S) )
-
-    FO_forward += getvalue(B_imed)
+    FO_forward += immediatebenefitlow(dH, dM, K_forward[t], dM.r[t+1,:,:,:], Q)
 
     # Update trials
-    u = getvariable(Q,:u)
+    idu0 = 1
     for i = 1:dH.N
-      u_trial[i+1,t] = getvalue(u[i])
-      x_trial[i,t+1] = (1+ret[i,t+1])*getvalue(u[i])
+      u_trial[i+1,t] = getvaluelow(Q, i+idu0)
+      x_trial[i,t+1] = (1+ret[i,t+1])*getvaluelow(Q, i+idu0)
     end
-    u_trial[1,t] = getvalue(getvariable(Q,:u0))
+    u_trial[1,t] = getvaluelow(Q,1)
 
     # If transactional cost is different from the optimization model
     if real_tc != 0.0
@@ -210,7 +264,7 @@ function forward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPro
       d_v = getvalue(d)
       x0_trial[t+1] = - sum((1.0+real_tc)*b_v) + sum((1.0-real_tc)*d_v) + x0_trial[t]
     else
-      x0_trial[t+1] = getvalue(getvariable(Q,:u0))
+      x0_trial[t+1] = getvaluelow(Q,1)
     end
   end
 
@@ -229,34 +283,57 @@ function backward(dH::MSDDPData, dM::MKData, AQ::Array{Model,2}, sp::Array{SubPr
       subp = sp[t,j]
       Q = AQ[t,j]
 
-      chgConstrRHS(Q, subp.cash, x0_trial[t])
-      chgConstrRHS(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+      chgConstrRHSLow(Q, subp.cash, x0_trial[t])
+      chgConstrRHSLow(Q, subp.risk, dH.γ*(sum(x_trial[:,t])+x0_trial[t]) )
       for i = 1:dH.N
-        chgConstrRHS(Q, subp.assets[i], x_trial[i,t])
+        chgConstrRHSLow(Q, subp.assets[i], x_trial[i,t])
       end
 
-      status = solve(Q)
+      status = solvelow(Q)
       if status ≠ :Optimal
        writeLP(Q,"prob.lp")
        error("Can't solve the problem status:",status)
       end
 
       # Evalute custs
-      λ0 = getDual(Q, subp.cash)
+      λ0 = getduallow(Q, subp.cash)
       λ = zeros(dH.N)
       for i = 1:dH.N
-        λ[i] = getDual(Q, subp.assets[i])
+        λ[i] = getduallow(Q, subp.assets[i])
       end
-      π = getDual(Q, subp.risk)
-      FO = getobjectivevalue(Q)
+      π = getduallow(Q, subp.risk)
+      FO = getobjectivevaluelow(Q)
       α[t,j] =  FO - (λ0 + dH.γ*π)*x0_trial[t] - sum([(λ[i] + dH.γ*π)*x_trial[i,t] for i = 1:dH.N])
       β[:,t,j] = vcat(λ0, λ) + dH.γ*π
     end
 
     for k = 1:dH.K
-      addcut(dH, dM, AQ[t-1,k], α, β, t)
+      addcutlow(dH, dM, AQ[t-1,k], α, β, t)
     end
   end
+end
+
+function addcutlow(dH::MSDDPData, dM::MKData, m, α::Array{Float64,2}, β::Array{Float64,3}, t::Int64)
+  N_v = CPLEX.num_var(m.internalModel.inner)
+  u0_id = 1
+  u_ids = collect(2:dH.N+1)
+
+  coef = zeros(Float64, dH.K*dH.S, N_v)
+  rhs = zeros(Float64, dH.K*dH.S)
+  for j = 1:dH.K
+    for s = 1:dH.S
+      id_c = s + (j-1)*dH.S
+      θ_id = (2+ 3*dH.N + dH.K*dH.S) + id_c
+
+      coef[id_c, θ_id] = 1
+      coef[id_c, u0_id] = -β[1,t,j]
+      for i = 1:dH.N
+        coef[id_c, u_ids[i]] = -β[i+1,t,j]*(1+dM.r[t+1,i,j,s])
+      end
+      rhs[id_c] = α[t,j]
+    end
+  end
+  CPLEX.add_constrs!(m.internalModel.inner, coef, '<', rhs)
 end
 
 function addcut(dH::MSDDPData, dM::MKData, Q, α::Array{Float64,2}, β::Array{Float64,3}, t::Int64)
@@ -316,14 +393,14 @@ function sddp( dH::MSDDPData, dM::MKData ;LP=2, parallel=false, simuLB=false,
       k = dM.k_ini
       t = 1
       Q = AQ[t,k]
-      status = solve(Q)
+      status = solvelow(Q)
       if status ≠ :Optimal
        writeLP(Q,"prob.lp")
        error("Can't solve the problem status:",status)
       end
-      UB = getobjectivevalue(Q) + dH.W_ini
-      u = getvalue(getvariable(Q,:u))
-      u0 = getvalue(getvariable(Q,:u0))
+      UB = getobjectivevaluelow(Q) + dH.W_ini
+      u = getvaluelow(Q,2:dH.N+1)
+      u0 = getvaluelow(Q,1)
 
       list_firstu = hcat(list_firstu,vcat(u0,u))
 

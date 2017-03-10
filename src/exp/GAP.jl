@@ -37,7 +37,7 @@ dH.S_LB = 500 # fix amount of forwards
     dH.c = cs[i_c]
     debug(dH)
     file = string(output_dir,file_name)
-    LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB, List_UB,
+    LB, UB, LB_c, AQ, sp, x_trial, u_trial, list_LB, list_UB,
       list_firstu = sddp(dH, dM;fastLBcal=false, file = string(output_dir,file_name) )
 
     γ_srt = string(dH.γ)[3:end]
