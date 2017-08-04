@@ -7,7 +7,8 @@ using PyCall, Logging, Distributions
 #HMM_MSDDP
 export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm
 #MSDDP
-export MKData, MSDDPData
+export MKData, MAAParameters, SDDPParameters, MSDDPModel
+export setmarkov!, setnassets!, setγ!, setinistate!, settranscost!
 export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
 
 
@@ -82,29 +83,29 @@ function predict(model,data::Array{Float64,2})
 	return states
 end
 
-function inithmm(ret::Array{Float64,2}, dH::MSDDPData)
-  T_l=size(ret,1)
-  Sc=1
-  return inithmm(ret, dH, T_l, Sc)
+function inithmm(m::MSDDPModel, ret::Array{Float64,2})
+  nperiods=size(ret,1)
+  samples =1
+  return inithmm(m, ret, nperiods, samples)
 end
 
-function inithmm_z(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=true)
-  dH.N += 1
-  dM, model = inithmm(ret, dH, T_l, Sc, pini_cond=pini_cond)
-  dH.N -= 1
+function inithmm_z(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=true)
+  setnassets!(m, nassets(m) +1)
+  mk, model = inithmm(m, ret, nperiods, samples, pini_cond=pini_cond)
+  setnassets!(m, nassets(m) -1)
   #Remove z state
-  dM.r = dM.r[1:dH.N,:,:]
-  return dM, model
+  mk.ret = mk.ret[1:nassets(m),:,:]
+  return mk, model
 end
 ## Uses HMM and LHS to populate MKData for MSDDP
-function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pini_cond=false)
+function inithmm(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
-  lst = fill(T_l, Sc)
-  model = train_hmm(ret, dH.K, lst)
+  lst = fill(nperiods, samples)
+  model = train_hmm(ret, nstates(m), lst)
 
   # Use conditional probability or unconditional probability
-	k_ini = (model[:predict](ret[1:T_l,:]) .+1)[end] # conditional probability
+	k_ini = (model[:predict](ret[1:nperiods,:]) .+1)[end] # conditional probability
 	if !pini_cond
 		# The high initial probabilities as the first state
 		prob_ini = model[:startprob_] # unconditional probability
@@ -116,29 +117,29 @@ function inithmm(ret::Array{Float64,2}, dH::MSDDPData, T_l::Int64, Sc::Int64; pi
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(dH.S, dH.K)*1.0/dH.S
+  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
 
   ## Use HMM for each state in LHS
-  r = zeros(dH.T, dH.N, dH.K, dH.S)
-  for k = 1:dH.K
-    μ = reshape(model[:means_][k,:],dH.N)
-    Σ = reshape(model[:covars_][k,:,:], dH.N, dH.N)
+  r = zeros(nstages(m), nassets(m), nstates(m), nscen(m))
+  for k = 1:nstates(m)
+    μ = reshape(model[:means_][k,:],nassets(m))
+    Σ = reshape(model[:covars_][k,:,:], nassets(m), nassets(m))
 		debug("μ= ", μ)
-		for t = 1:dH.T
-    	r[t,:,k,:] = lhsnorm(μ, Σ, dH.S, rando=false)'
+		for t = 1:nstages(m)
+    	r[t,:,k,:] = lhsnorm(μ, Σ, nscen(m), rando=false)'
 		end
   end
   r = exp(r)-1
 
-  dM = MKData( r, p_s, k_ini, P_K )
+  dM = MKData(k_ini, P_K, p_s, r)
   return dM, model
 end
 
-function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, Sc::Int64, μ, σ)
+function inithmm_ar(z::Array{Float64,2}, dF::ARData, m::MSDDPModel, nperiods::Int64, samples::Int64, μ, σ)
 	np.random[:seed](rand(0:4294967295))
 
-  lst = fill(T_l, Sc)
-  model = train_hmm(reshape(z, (T_l)*Sc), dH.K, lst, μ, σ)
+  lst = fill(nperiods, samples)
+  model = train_hmm(reshape(z, (nperiods)*samples), nstates(m), lst, μ, σ)
 
   # Use z_0 =0
 	k_ini = (model[:predict](dF.a_z[1]) .+1)[1] # conditional probability
@@ -147,19 +148,19 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(dH.S, dH.K)*1.0/dH.S
+  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
 
   ## Use HMM for each state in LHS
-  r = zeros(dH.T,dH.N, dH.K, dH.S)
-  for k = 1:dH.K
+  r = zeros(nstages(m),nassets(m), nstates(m), nscen(m))
+  for k = 1:nstates(m)
 		μ = model[:means_][k,1]
     Σ = model[:covars_][k,1]
-    z_tp1 = lhsnorm(μ, Σ, dH.S, rando=false)'
-		for t = 1:dH.T
-			ϵ = lhsnorm(zeros(dH.N+1), dF.Σ, dH.S, rando=true)'
-			for s = 1:dH.S
-				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[dH.N+1,s])/dF.b_z[1]
-				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:dH.N,s]
+    z_tp1 = lhsnorm(μ, Σ, nscen(m), rando=false)'
+		for t = 1:nstages(m)
+			ϵ = lhsnorm(zeros(nassets(m)+1), dF.Σ, nscen(m), rando=true)'
+			for s = 1:nscen(m)
+				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[nassets(m)+1,s])/dF.b_z[1]
+				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:nassets(m),s]
 				# Transform ρ = ln(1+r) in return (r)
 				r[t,:,k,s] = exp(ρ)-1
 				# Discount risk free rate
@@ -167,14 +168,14 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, dH::MSDDPData, T_l::Int64, 
 			end
 		end
   end
-  dM = MKData( r, p_s, k_ini, P_K )
+  dM = MKData(k_ini, P_K, p_s, r)
   return dM, model
 end
 
-function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
+function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, m::MSDDPModel)
 	np.random[:seed](rand(0:4294967295))
 
-  model = train_hmm(ff, dH.K)
+  model = train_hmm(ff, nstates(m))
 
 	# Use conditional probability
 	k_ini = (model[:predict](ff) .+1)[end] # conditional probability
@@ -183,20 +184,20 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(dH.S, dH.K)*1.0/dH.S
+  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
 
   ## Use HMM for each state in LHS
-  r = zeros(dH.T, dH.N, dH.K, dH.S)
-	samp_ϵ = Array(Float64,dH.N,dH.S)
-  for k = 1:dH.K
+  r = zeros(nstages(m), nassets(m), nstates(m), nscen(m))
+	samp_ϵ = Array(Float64,nassets(m),nscen(m))
+  for k = 1:nstates(m)
 		μ = model[:means_][k,:]
     Σ = model[:covars_][k,:,:]
-    z = lhsnorm(μ, Σ, dH.S, rando=false)'
-		for t = 1:dH.T
-			for i = 1:dH.N
-				samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], dH.S, rando=true)
+    z = lhsnorm(μ, Σ, nscen(m), rando=false)'
+		for t = 1:nstages(m)
+			for i = 1:nassets(m)
+				samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], nscen(m), rando=true)
 			end
-			for s = 1:dH.S
+			for s = 1:nscen(m)
 				ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
 
 				# Transform ρ = ln(1+r) in return (r)
@@ -204,7 +205,7 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, dH::MSDDPData)
 			end
 		end
   end
-  dM = MKData( r, p_s, k_ini, P_K )
+  dM = MKData(k_ini, P_K, p_s, r)
   return dM, model
 end
 
