@@ -8,6 +8,8 @@ using PyCall, Logging, Distributions
 export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm
 #MSDDP
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
+export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
+export nstages, nassets, nstates, nscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, reset!
 

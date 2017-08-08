@@ -671,12 +671,13 @@ end
 function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
    mcopy = deepcopy(model)
    stages_test = size(rets,2)
+   nstag = nstages(model)
    its=floor(Int,(stages_test-1)/(nstages(model)-1))
 
    all_x0, all_x = inialloct(mcopy)
    for i = 1:its
-     rets_forward   = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
-     states_forward_a =     states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
+     rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
+     states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
      x, x0, expret, u = forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
      all_x = hcat(all_x, x[:,2:end])
@@ -687,11 +688,11 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
    # Simulate last periods
    diff_t = round(Int, stages_test-1 - (its*(nstages(mcopy)-1)))
    if diff_t > 0
-     rets_forward_a = zeros(nassets(mcopy),diff_t)
+     rets_forward_a   = zeros(nassets(mcopy),diff_t)
      states_forward_a = Array(Int64,diff_t)
-     rets_forward_a = rets[:,its*(nstages(mcopy)-1)+1:end]
+     rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
-     x, x0, expret, u = forward!(model, states_forward_a, rets_forward_a; nstag= diff_t +1, real_transcost=real_transcost)
+     x, x0, expret, u = forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
      all_x = hcat(all_x, x[:,2:end])
      all_x0 = vcat(all_x0, x0[2:end])
    end
