@@ -4,10 +4,10 @@ using JuMP, CPLEX
 using Distributions, MathProgBase
 using Logging, JLD
 
-export MKData, MAAParameters, SDDPParameters, MSDDPModel
-export solve, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport, createmodels
+export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
+export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
 export nstages, nassets, nstates, nscen
-export setmarkov!, setnassets!, setγ!, setinistate!, settranscost!
+export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
 export chgConstrRHSLow
 export memuse
 
@@ -60,15 +60,19 @@ type SDDPParameters
     file::String                    # Output JLD file
 end
 
-type MSDDPModel
+type ModelSizes
     nstages::Int64
     nassets::Int64
     nstates::Int64
     nscen::Int64
+end
+
+type MSDDPModel
+    sizes::ModelSizes
     lpsolver::JuMP.MathProgBase.AbstractMathProgSolver
     asset_parameters::MAAParameters
     param::SDDPParameters
-    markov_data::Nullable{MKData}
+    markov_data::MKData
     stages::Vector{Stage}
 end
 
@@ -78,6 +82,7 @@ end
 SDDPParameters(max_it::Int64, samplower::Int64, samplower_inc::Int64, nit_before_lower::Int64, gap::Float64, α_lower::Float64 ) =
     SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, 0.5, 0, true, false, false, true, "")
 
+" Construct the MSDDPModel using ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
         param::SDDPParameters,
         markov_data::MKData;
@@ -86,44 +91,46 @@ function MSDDPModel(asset_parameters::MAAParameters,
         nstates  = size(markov_data.transprob, 1),
         nscen    = size(markov_data.prob_scenario_state, 1),
         lpsolver = ClpSolver())
-    MSDDPModel(asset_parameters, param, Nullable{MKData}(markov_data);
-    nassets = nassets, nstages = nstages, nstates = nstates,
-    nscen = nscen, lpsolver = lpsolver)
+    MSDDPModel(ModelSizes(nstages, nassets, nstates, nscen), lpsolver,
+        asset_parameters, param, markov_data)
 end
 
-function MSDDPModel(asset_parameters::MAAParameters,
+" Construct the MSDDPModel without ModelSizes "
+function MSDDPModel(msize::ModelSizes,
+        lpsolver::JuMP.MathProgBase.AbstractMathProgSolver,
+        asset_parameters::MAAParameters,
         param::SDDPParameters,
-        markov_data::Nullable{MKData};
-        nassets  = length(asset_parameters.iniassets),
-        nstages  = size(markov_data.ret, 1),
-        nstates  = size(markov_data.transprob, 1),
-        nscen    = size(markov_data.prob_scenario_state, 1),
-        lpsolver = ClpSolver())
-    stages = Vector{Stage}(nstages)
-    for t = 1:nstages
-        stages[t] = Stage(Vector{Subproblem}(nstates))
+        markov_data::MKData)
+    stages = Vector{Stage}(nstages(msize))
+    for t = 1:nstages(msize)
+        stages[t] = Stage(Vector{Subproblem}(nstates(msize)))
     end
-    MSDDPModel(nstages, nassets, nstates, nscen, lpsolver,
-        asset_parameters, param, markov_data, stages)
+    m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages)
+    createmodels!(m)
+    m
 end
 
-function MSDDPModel(asset_parameters::MAAParameters,
-        param::SDDPParameters,
-        nassets,
-        nstages,
-        nstates,
-        nscen;
-        lpsolver = ClpSolver())
-    markov_data = Nullable{MKData}()
-    MSDDPModel(asset_parameters, param, markov_data; nassets=nassets, nstages=nstages,
-        nstates=nstates, nscen=nscen, lpsolver=lpsolver)
+" Reset the stages vector inside MSDDPModel "
+function reset!(m::MSDDPModel)
+    stages = Vector{Stage}(nstages(m))
+    for t = 1:nstages(m)
+        stages[t] = Stage(Vector{Subproblem}(nstates(m)))
+    end
+    m.stages = stages
+    createmodels!(m)
+    nothing
 end
 
 " Utils for MSDDPModel "
-nstages(m::MSDDPModel) = m.nstages
-nassets(m::MSDDPModel) = m.nassets
-nstates(m::MSDDPModel) = m.nstates
-nscen(m::MSDDPModel)   = m.nscen
+nstages(m::MSDDPModel) = nstages(m.sizes)
+nassets(m::MSDDPModel) = nassets(m.sizes)
+nstates(m::MSDDPModel) = nstates(m.sizes)
+nscen(m::MSDDPModel)   = nscen(m.sizes)
+
+nstages(ms::ModelSizes) = ms.nstages
+nassets(ms::ModelSizes) = ms.nassets
+nstates(ms::ModelSizes) = ms.nstates
+nscen(ms::ModelSizes)   = ms.nscen
 
 function inialloc!(m::MSDDPModel, x::AbstractVector{Float64}, rf::Float64)
     m.asset_parameters.iniassets = x
@@ -134,30 +141,36 @@ end
 inirf(m::MSDDPModel)                 = m.asset_parameters.inirf
 iniassets(m::MSDDPModel)             = m.asset_parameters.iniassets
 iniassets(m::MSDDPModel, index::Int) = iniassets(m)[index]
-inialloc(m::MSDDPModel)              = vcat(inirf(m),iniassets(m))
+inialloc(m::MSDDPModel)              = vcat(inirf(m), iniassets(m))
+inialloct(m::MSDDPModel)             = inirf(m), iniassets(m)
 initwealth(m::MSDDPModel)            = sum(inialloc(m))
-inistate(m::MSDDPModel)              = get(m.markov_data).inistate
+inistate(m::MSDDPModel)              = m.markov_data.inistate
 
 stage(m::MSDDPModel, stage::Int)     = m.stages[stage]
 subproblem(m::MSDDPModel, stage::Int, state::Int) = m.stages[stage].subproblems[state]
 
 transcost(m::MSDDPModel)             = m.asset_parameters.transcost
-transprob(m::MSDDPModel)             = get(m.markov_data).transprob
+transprob(m::MSDDPModel)             = m.markov_data.transprob
 transprob(m::MSDDPModel, state::Int) = transprob(m)[state,:]
-probscen(m::MSDDPModel)              = get(m.markov_data).prob_scenario_state
+probscen(m::MSDDPModel)              = m.markov_data.prob_scenario_state
 probscen(m::MSDDPModel, scen::Int, state::Int) = probscen(m)[scen, state]
 
-returns(m::MSDDPModel)               = get(m.markov_data).ret
+returns(m::MSDDPModel)               = m.markov_data.ret
 returns(m::MSDDPModel, stage::Int)   = returns(m)[stage,:,:,:]
 returns(m::MSDDPModel, stage::Int, asset::Int, state::Int, sample::Int)  = returns(m)[stage, asset, state, sample]
 
 maximum(ap::MAAParameters)           = ap.maximum
 jumpmodel(sp::Subproblem)            = sp.jmodel
 
+setnstages!(m::MSDDPModel, n::Int)   = m.sizes.nstages = n
+setnassets!(m::MSDDPModel, n::Int)   = m.sizes.nassets = n
+setnstates!(m::MSDDPModel, n::Int)   = m.sizes.nstates = n
+setnscen!(m::MSDDPModel, n::Int)     = m.sizes.nscen = n
+
 setmarkov!(m::MSDDPModel, mk::MKData)= m.markov_data = mk
-setnassets!(m::MSDDPModel, n::Int)   = m.nassets = n
 setγ!(m::MSDDPModel, γ::Float64)     = m.asset_parameters.γ = γ
-setinistate!(m::MSDDPModel, state::Int) = get(m.markov_data).inistate = state
+setα!(m::MSDDPModel, α::Float64)     = m.asset_parameters.α = α
+setinistate!(m::MSDDPModel, state::Int) = m.markov_data.inistate = state
 settranscost!(m::MSDDPModel, tc::Float64) = m.asset_parameters.transcost = tc
 
 function memuse()
@@ -461,7 +474,6 @@ function solve(model, p::SDDPParameters)
     rets_forward = zeros(Float64, nassets(model), nstages(model))
     states_forward = Array(Int64, nstages(model))
 
-    createmodels!(model)
     quantil = quantile(Normal(),sd.α_lower)
 
     gap = 100.0
@@ -650,7 +662,7 @@ function simulate(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_tr
   if samps != nstages(model)
     error("Return series has to have $(nstages(model)) and has $(nsamp) samples, use simulatesw if you want to really do that.")
   end
-  x, x0, exp_ret, u = forward!(model, real_transcost=real_transcost)
+  x, x0, exp_ret, u = forward!(model, states, rets, real_transcost=real_transcost)
 
   return x, x0, exp_ret
 end
@@ -661,14 +673,14 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
    stages_test = size(rets,2)
    its=floor(Int,(stages_test-1)/(nstages(model)-1))
 
-   all_x, all_x0 = inialloc(mcopy)
+   all_x0, all_x = inialloct(mcopy)
    for i = 1:its
      rets_forward   = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
-     states_forward_a =     k_test[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
+     states_forward_a =     states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
      x, x0, expret, u = forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
-     all_x = hcat(all_x,x[:,2:end])
-     all_x0 = vcat(all_x0,x0[2:end])
+     all_x = hcat(all_x, x[:,2:end])
+     all_x0 = vcat(all_x0, x0[2:end])
      inialloc!(mcopy, x[:,end], x0[end])
    end
 
@@ -678,10 +690,10 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
      rets_forward_a = zeros(nassets(mcopy),diff_t)
      states_forward_a = Array(Int64,diff_t)
      rets_forward_a = rets[:,its*(nstages(mcopy)-1)+1:end]
-     states_forward_a = k_test[its*(nstages(mcopy)-1)+1:end]
-     x, x0, expret, u = forward!(model, states_forward_a, rets_forward_a; nstages= diff_t +1, real_transcost=real_transcost)
-     all_x = hcat(all_x,x[:,2:end])
-     all_x0 = vcat(all_x0,x0[2:end])
+     states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
+     x, x0, expret, u = forward!(model, states_forward_a, rets_forward_a; nstag= diff_t +1, real_transcost=real_transcost)
+     all_x = hcat(all_x, x[:,2:end])
+     all_x0 = vcat(all_x0, x0[2:end])
    end
 
    return all_x, all_x0

@@ -54,20 +54,14 @@ using HMM_MSDDP
 
     γ = 0.003
     c = 0.01
-
-    m = MSDDPModel(MAAParameters(α, γ, c, x_ini_s[2:N], x_ini_s[1], maxvl),
-    SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower),
-    N, T, K, S;
-    lpsolver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
+    ms = ModelSizes(T, N, K, S)
 
     file = "./test_hmm_msddp.csv"
     ret = readcsv(file, Float64)
     ret = reshape(ret, N, nperiods, samples)
     ret = reshape(ret, N, nperiods*samples)
 
-    mk, hmm = inithmm(m, ret', nperiods, samples)
-
-    setmarkov!(m, mk)
+    mk, hmm = inithmm(ms, ret', nperiods, samples)
 
     order = Array(Int64, K)
     found = true

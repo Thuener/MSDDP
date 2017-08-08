@@ -58,6 +58,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(UB, 1.1403939524941527)
 
     setγ!(m, 0.01)
+    reset!(m)
     LB, UB = solve(m, m.param)
     @test isapprox(std(LB), 0.003095216212566487)
     @test isapprox(mean(LB), 1.0310910343584925)
@@ -108,8 +109,8 @@ using MSDDP, Distributions, Base.Test, CPLEX
     K = 3
     c = 0.01
     γ = 0.1
-    r = zeros(T,N,K,S)
-    r[1,:,1,:] = μ[1:N]*ones(1,S) + rand(MvNormal(Σ[1:N,1:N]),S)
+    r = zeros(T, N, K, S)
+    r[1,:,1,:] = μ[1:N]*ones(1,S) + rand(MvNormal(Σ[1:N, 1:N]), S)
     for k = 1:K
       r[1,:,k,:] = r[1,:,1,:]
     end
@@ -117,9 +118,9 @@ using MSDDP, Distributions, Base.Test, CPLEX
       r[t,:,:,:] = r[1,:,:,:]
     end
 
-    p = rand(Uniform(),S,K)
+    p = rand(Uniform(), S, K)
     p = p./(ones(S)*sum(p,1))
-    P_K = rand(Uniform(),K,K)
+    P_K = rand(Uniform(), K, K)
     P_K = P_K./(sum(P_K,2)*ones(1,K))
 
     # MSDDPModel
@@ -135,6 +136,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(UB, 3.4107004891991517)
 
     setinistate!(m, 2)
+    reset!(m)
     LB, UB = solve(m, m.param)
 
 
@@ -143,6 +145,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(UB, 3.4152483430239413)
 
     setinistate!(m, 3)
+    reset!(m)
     LB, UB = solve(m, m.param)
 
     @test isapprox(std(LB), 0.5070739642564517)
@@ -150,6 +153,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(UB, 3.4120663623853877)
 
     settranscost!(m, 0.05)
+    reset!(m)
     LB2, UB2 = solve(m, m.param)
     @test UB2 < UB
 end

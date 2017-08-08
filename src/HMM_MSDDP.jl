@@ -7,9 +7,9 @@ using PyCall, Logging, Distributions
 #HMM_MSDDP
 export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm
 #MSDDP
-export MKData, MAAParameters, SDDPParameters, MSDDPModel
-export setmarkov!, setnassets!, setγ!, setinistate!, settranscost!
-export sddp, simulate, simulatesw, simulate_stateprob, simulatestates, readHMMPara, simulate_percport
+export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
+export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
+export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, reset!
 
 
 function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
@@ -71,10 +71,10 @@ function score(model, data::Array{Float64,1}, lst::Array{Int64,1})
   model[:score]((data')',lst) # Has to be Array{Float64,2}
 end
 
-function predict(model,data::Array{Float64,1})
+function predict(model, data::Array{Float64,1})
 	predict(model,(data')')
 end
-function predict(model,data::Array{Float64,2})
+function predict(model, data::Array{Float64,2})
 	samples = size(data,1)
 	states = Array(Int64,samples)
 	for i = 1:samples
@@ -83,26 +83,26 @@ function predict(model,data::Array{Float64,2})
 	return states
 end
 
-function inithmm(m::MSDDPModel, ret::Array{Float64,2})
+function inithmm(ms::ModelSizes, ret::Array{Float64,2})
   nperiods=size(ret,1)
   samples =1
-  return inithmm(m, ret, nperiods, samples)
+  return inithmm(ms, ret, nperiods, samples)
 end
 
-function inithmm_z(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=true)
-  setnassets!(m, nassets(m) +1)
-  mk, model = inithmm(m, ret, nperiods, samples, pini_cond=pini_cond)
-  setnassets!(m, nassets(m) -1)
+function inithmm_z(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=true)
+  setnassets!(ms, nassets(ms) +1)
+  mk, model = inithmm(ms, ret, nperiods, samples, pini_cond=pini_cond)
+  setnassets!(ms, nassets(ms) -1)
   #Remove z state
-  mk.ret = mk.ret[1:nassets(m),:,:]
+  mk.ret = mk.ret[1:nassets(ms),:,:]
   return mk, model
 end
 ## Uses HMM and LHS to populate MKData for MSDDP
-function inithmm(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=false)
+function inithmm(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
   lst = fill(nperiods, samples)
-  model = train_hmm(ret, nstates(m), lst)
+  model = train_hmm(ret, nstates(ms), lst)
 
   # Use conditional probability or unconditional probability
 	k_ini = (model[:predict](ret[1:nperiods,:]) .+1)[end] # conditional probability
@@ -117,16 +117,16 @@ function inithmm(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples:
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
+  p_s = ones(nscen(ms), nstates(ms))*1.0/nscen(ms)
 
   ## Use HMM for each state in LHS
-  r = zeros(nstages(m), nassets(m), nstates(m), nscen(m))
-  for k = 1:nstates(m)
-    μ = reshape(model[:means_][k,:],nassets(m))
-    Σ = reshape(model[:covars_][k,:,:], nassets(m), nassets(m))
+  r = zeros(nstages(ms), nassets(ms), nstates(ms), nscen(ms))
+  for k = 1:nstates(ms)
+    μ = reshape(model[:means_][k,:],nassets(ms))
+    Σ = reshape(model[:covars_][k,:,:], nassets(ms), nassets(ms))
 		debug("μ= ", μ)
-		for t = 1:nstages(m)
-    	r[t,:,k,:] = lhsnorm(μ, Σ, nscen(m), rando=false)'
+		for t = 1:nstages(ms)
+    	r[t,:,k,:] = lhsnorm(μ, Σ, nscen(ms), rando=false)'
 		end
   end
   r = exp(r)-1
@@ -135,11 +135,11 @@ function inithmm(m::MSDDPModel, ret::Array{Float64,2}, nperiods::Int64, samples:
   return dM, model
 end
 
-function inithmm_ar(z::Array{Float64,2}, dF::ARData, m::MSDDPModel, nperiods::Int64, samples::Int64, μ, σ)
+function inithmm_ar(z::Array{Float64,2}, dF::ARData, ms::ModelSizes, nperiods::Int64, samples::Int64, μ, σ)
 	np.random[:seed](rand(0:4294967295))
 
   lst = fill(nperiods, samples)
-  model = train_hmm(reshape(z, (nperiods)*samples), nstates(m), lst, μ, σ)
+  model = train_hmm(reshape(z, (nperiods)*samples), nstates(ms), lst, μ, σ)
 
   # Use z_0 =0
 	k_ini = (model[:predict](dF.a_z[1]) .+1)[1] # conditional probability
@@ -148,19 +148,19 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, m::MSDDPModel, nperiods::In
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
+  p_s = ones(nscen(ms), nstates(ms))*1.0/nscen(ms)
 
   ## Use HMM for each state in LHS
-  r = zeros(nstages(m),nassets(m), nstates(m), nscen(m))
-  for k = 1:nstates(m)
+  r = zeros(nstages(ms),nassets(ms), nstates(ms), nscen(ms))
+  for k = 1:nstates(ms)
 		μ = model[:means_][k,1]
     Σ = model[:covars_][k,1]
-    z_tp1 = lhsnorm(μ, Σ, nscen(m), rando=false)'
-		for t = 1:nstages(m)
-			ϵ = lhsnorm(zeros(nassets(m)+1), dF.Σ, nscen(m), rando=true)'
-			for s = 1:nscen(m)
-				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[nassets(m)+1,s])/dF.b_z[1]
-				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:nassets(m),s]
+    z_tp1 = lhsnorm(μ, Σ, nscen(ms), rando=false)'
+		for t = 1:nstages(ms)
+			ϵ = lhsnorm(zeros(nassets(ms)+1), dF.Σ, nscen(ms), rando=true)'
+			for s = 1:nscen(ms)
+				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[nassets(ms)+1,s])/dF.b_z[1]
+				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:nassets(ms),s]
 				# Transform ρ = ln(1+r) in return (r)
 				r[t,:,k,s] = exp(ρ)-1
 				# Discount risk free rate
@@ -172,10 +172,10 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, m::MSDDPModel, nperiods::In
   return dM, model
 end
 
-function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, m::MSDDPModel)
+function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes)
 	np.random[:seed](rand(0:4294967295))
 
-  model = train_hmm(ff, nstates(m))
+  model = train_hmm(ff, nstates(ms))
 
 	# Use conditional probability
 	k_ini = (model[:predict](ff) .+1)[end] # conditional probability
@@ -184,20 +184,20 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, m::MSDDPModel)
   P_K = model[:transmat_]
 
   # Conditional probabilities of each state for each scenario p(S|K)
-  p_s = ones(nscen(m), nstates(m))*1.0/nscen(m)
+  p_s = ones(nscen(ms), nstates(ms))*1.0/nscen(ms)
 
   ## Use HMM for each state in LHS
-  r = zeros(nstages(m), nassets(m), nstates(m), nscen(m))
-	samp_ϵ = Array(Float64,nassets(m),nscen(m))
-  for k = 1:nstates(m)
+  r = zeros(nstages(ms), nassets(ms), nstates(ms), nscen(ms))
+	samp_ϵ = Array(Float64,nassets(ms),nscen(ms))
+  for k = 1:nstates(ms)
 		μ = model[:means_][k,:]
     Σ = model[:covars_][k,:,:]
-    z = lhsnorm(μ, Σ, nscen(m), rando=false)'
-		for t = 1:nstages(m)
-			for i = 1:nassets(m)
-				samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], nscen(m), rando=true)
+    z = lhsnorm(μ, Σ, nscen(ms), rando=false)'
+		for t = 1:nstages(ms)
+			for i = 1:nassets(ms)
+				samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], nscen(ms), rando=true)
 			end
-			for s = 1:nscen(m)
+			for s = 1:nscen(ms)
 				ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
 
 				# Transform ρ = ln(1+r) in return (r)
