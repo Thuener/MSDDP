@@ -110,7 +110,7 @@ function MSDDPModel(msize::ModelSizes,
     m
 end
 
-" Reset the stages vector inside MSDDPModel "
+" Reset the stages vector inside MSDDPModel and create models"
 function reset!(m::MSDDPModel)
     stages = Vector{Stage}(nstages(m))
     for t = 1:nstages(m)
@@ -121,7 +121,8 @@ function reset!(m::MSDDPModel)
     nothing
 end
 
-" Utils for MSDDPModel "
+#  Utils for MSDDPModel
+
 nstages(m::MSDDPModel) = nstages(m.sizes)
 nassets(m::MSDDPModel) = nassets(m.sizes)
 nstates(m::MSDDPModel) = nstates(m.sizes)
