@@ -4,12 +4,19 @@ using JuMP, CPLEX
 using Distributions, MathProgBase
 using Logging, JLD
 
+# Types
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
-export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
+
+export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport,  createmodels!, reset!
 export nstages, nassets, nstates, nscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
-export chgConstrRHSLow
+export chgrrhs_low!
 export memuse
+# Interface functions
+export createmodel!, returns, transprob, transcost, probscen, inirf, iniassets, inialloc, inistate, forward!, backward!,
+ initwealth, maximum, param, assetspar
+export Subproblem
+
 
 ## Types ##
 
@@ -121,17 +128,20 @@ function reset!(m::MSDDPModel)
     nothing
 end
 
-#  Utils for MSDDPModel
+#  Utils for ModelSizes
+nstages(ms::ModelSizes) = ms.nstages
+nassets(ms::ModelSizes) = ms.nassets
+nstates(ms::ModelSizes) = ms.nstates
+nscen(ms::ModelSizes)   = ms.nscen
 
+#  Utils for MSDDPModel
 nstages(m::MSDDPModel) = nstages(m.sizes)
 nassets(m::MSDDPModel) = nassets(m.sizes)
 nstates(m::MSDDPModel) = nstates(m.sizes)
 nscen(m::MSDDPModel)   = nscen(m.sizes)
 
-nstages(ms::ModelSizes) = ms.nstages
-nassets(ms::ModelSizes) = ms.nassets
-nstates(ms::ModelSizes) = ms.nstates
-nscen(ms::ModelSizes)   = ms.nscen
+param(m::MSDDPModel)   = m.param
+assetspar(m::MSDDPModel)   = m.asset_parameters
 
 function inialloc!(m::MSDDPModel, x::AbstractVector{Float64}, rf::Float64)
     m.asset_parameters.iniassets = x
@@ -181,7 +191,7 @@ end
 
 
 " Change the RHS using the index of the constraint "
-function chgConstrRHS(sp::JuMP.Model, idx::Int64, rhs::Number)
+function chgrrhs(sp::JuMP.Model, idx::Int64, rhs::Number)
     constr = sp.linconstr[idx]
     if constr.lb != -Inf
         if constr.ub != Inf
@@ -211,7 +221,8 @@ function chgConstrRHS(sp::JuMP.Model, idx::Int64, rhs::Number)
     end
 end
 
-function setrhslow!(cmodel::CPLEX.Model, idx::Int, rhs::Number)
+" Set constraint RHS using the Cplex low level function "
+function setrhs_low!(cmodel::CPLEX.Model, idx::Int, rhs::Number)
     ncons = 1
     stat = ccall(("CPXchgrhs",CPLEX.libcplex), Cint, (
                     Ptr{Void},
@@ -226,8 +237,9 @@ function setrhslow!(cmodel::CPLEX.Model, idx::Int, rhs::Number)
     end
 end
 
-function chgConstrRHSLow(sp::JuMP.Model, idx::Int64, rhs::Number)
-    setrhslow!(sp.internalModel.inner, idx, rhs)
+" Change constraint RHS using the Cplex low level function "
+function chgrrhs_low!(sp::JuMP.Model, idx::Int64, rhs::Number)
+    setrhs_low!(sp.internalModel.inner, idx, rhs)
 end
 
 function getDual(sp::JuMP.Model, idx::Int64)
@@ -237,22 +249,22 @@ function getDual(sp::JuMP.Model, idx::Int64)
     return sp.linconstrDuals[idx]
 end
 
-function getduallow(sp::JuMP.Model, idx::Int64)
+function getdual_low(sp::JuMP.Model, idx::Int64)
     duals = CPLEX.get_constr_duals(sp.internalModel.inner)
     return duals[idx]
 end
 
-function solvelow(sp::JuMP.Model)
+function solve_low(sp::JuMP.Model)
     CPLEX.optimize!(sp.internalModel.inner)
-    return :Optimal
+    return CPLEX.status(sp.internalModel)
 end
 
-" Evalute immediate benefit "
-function immediatebenefitlow(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
+" Evalute immediate benefit using low level Cplex api "
+function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
 
-    u = getvaluelow(sp, 2:nassets(model)+1)
-    b = getvaluelow(sp, 2+nassets(model):2*nassets(model)+1)
-    d = getvaluelow(sp, 2*(1+nassets(model)):3*nassets(model)+1)
+    u = getvalue_low(sp, 2:nassets(model)+1)
+    b = getvalue_low(sp, 2+nassets(model):2*nassets(model)+1)
+    d = getvalue_low(sp, 2*(1+nassets(model)):3*nassets(model)+1)
 
     stateprob = transprob(model, state)
     B_imed = - transcost(model)*sum(b[i] + d[i] for i = 1:nassets(model)) +
@@ -261,15 +273,15 @@ function immediatebenefitlow(model, sp::JuMP.Model, state::Int, rets::Array{Floa
     return B_imed
 end
 
-function getobjectivevaluelow(sp::JuMP.Model)
+function getobjectivevalue_low(sp::JuMP.Model)
     CPLEX.get_objval(sp.internalModel.inner)
 end
 
-function getvaluelow(sp::JuMP.Model, idx::Int64)
+function getvalue_low(sp::JuMP.Model, idx::Int64)
     return CPLEX.get_solution(sp.internalModel.inner)[idx]
 end
 
-function getvaluelow(sp::JuMP.Model, ridx::UnitRange{Int64})
+function getvalue_low(sp::JuMP.Model, ridx::UnitRange{Int64})
     vidx = collect(ridx)
     ret = Array(Float64,length(vidx))
     values = CPLEX.get_solution(sp.internalModel.inner)
@@ -283,7 +295,7 @@ end
 function createmodel!(m::MSDDPModel, stage::Int, state::Int)
     rets = returns(m, stage+1)
     probstates = transprob(m, state)
-    ap = m.asset_parameters
+    ap = assetspar(m)
 
 
     jmodel = Model(solver = m.lpsolver)
@@ -293,7 +305,7 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
     @variable(jmodel, d[1:nassets(m)] >= 0)
     @variable(jmodel, z)
     @variable(jmodel, y[1:nstates(m),1:nscen(m)] >= 0)
-    @variable(jmodel, θ[1:nstates(m),1:nscen(m)] <= maximum(m.asset_parameters))
+    @variable(jmodel, θ[1:nstates(m),1:nscen(m)] <= maximum(ap))
     @objective(jmodel, Max, - transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) +
                   sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(m)) + θ[k,s])*probstates[k]*probscen(m, s, k)
                   for k = 1:nstates(m), s = 1:nscen(m)))
@@ -301,10 +313,10 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
     cash = @constraint(jmodel, u0 + sum((1+transcost(m))*b[i] - (1-transcost(m))*d[i] for i = 1:nassets(m)) == inirf(m)).idx
     assets = Array(Int64,nassets(m))
     for i = 1:nassets(m)
-        assets[i] = @constraint(jmodel, u[i] - b[i] + d[i] == iniassets(m,i)).idx
+        assets[i] = @constraint(jmodel, u[i] - b[i] + d[i] == iniassets(m, i)).idx
     end
-    risk =  @constraint(jmodel,-(z - sum(probstates[k]*probscen(m, s, k)*y[k,s] for k = 1:nstates(m), s = 1:nscen(m))/(1-ap.α))
-                          + transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) <= ap.γ*(initwealth(m))).idx
+    risk =  @constraint(jmodel,-(z - sum(probstates[k]*probscen(m, s, k)*y[k, s] for k = 1:nstates(m), s = 1:nscen(m))/(1-ap.α))
+                          + transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) <= ap.γ*initwealth(m)).idx
 
     @constraint(jmodel, trunc[k = 1:nstates(m), s = 1:nscen(m)], y[k,s] >= z - sum(rets[i,k,s]*u[i] for i = 1:nassets(m)))
 
@@ -312,7 +324,11 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
         @constraint(jmodel, bound_cuts[k = 1:nstates(m), s = 1:nscen(m)], θ[k,s] ==  0)
     end
 
-    JuMP.solve(jmodel)
+    status = JuMP.solve(jmodel)
+    if status ≠ :Optimal
+        writeLP(jumpmodel(sp),"prob.lp")
+        error("Can't solve the problem status:",status)
+    end
     m.stages[stage].subproblems[state] = Subproblem(jmodel, cash, assets, risk)
 end
 
@@ -348,33 +364,34 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
     x_trial[1:nassets(m), 1] = iniassets(m)
     x0_trial[1] = inirf(m)
     u_trial = zeros(nassets(m)+1, nstag)
-    ap = m.asset_parameters
+    ap = assetspar(m)
     obj_forward = initwealth(m)
     for t = 1:nstag-1
         k = states_forward[t]
         sp = subproblem(m, t, k)
 
-        chgConstrRHSLow(jumpmodel(sp), sp.cash, x0_trial[t])
-        chgConstrRHSLow(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+        chgrrhs_low!(jumpmodel(sp), sp.cash, x0_trial[t])
+        chgrrhs_low!(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
         for i = 1:nassets(m)
-            chgConstrRHSLow(jumpmodel(sp), sp.assets[i], x_trial[i,t])
+            chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
         end
         # Resolve subprob in time t
-        status = solvelow(jumpmodel(sp))
+        status = solve_low(jumpmodel(sp))
         if status ≠ :Optimal
             writeLP(jumpmodel(sp),"prob.lp")
             error("Can't solve the problem status:",status)
         end
         # Evalute immediate benefit
-        obj_forward += immediatebenefitlow(m, jumpmodel(sp), states_forward[t], returns(m,t+1))
+        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states_forward[t], returns(m,t+1))
 
         # Update trials
         id_u0 = 1
         for i = 1:nassets(m)
-            u_trial[i+1,t] = getvaluelow(jumpmodel(sp), i+id_u0)
-            x_trial[i,t+1] = (1+rets[i,t+1])*getvaluelow(jumpmodel(sp), i+id_u0)
+            u_val = getvalue_low(jumpmodel(sp), i+id_u0)
+            u_trial[i+1,t] = u_val
+            x_trial[i,t+1] = (1+rets[i,t+1])*u_val
         end
-        u_trial[1,t] = getvaluelow(jumpmodel(sp), 1)
+        u_trial[1,t] = getvalue_low(jumpmodel(sp), 1)
 
         # If transactional cost is different from the optimization model
         if real_transcost != 0.0
@@ -384,7 +401,7 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
             d_v = getvalue(d)
             x0_trial[t+1] = - sum((1.0+real_transcost)*b_v) + sum((1.0-real_transcost)*d_v) + x0_trial[t]
         else
-            x0_trial[t+1] = getvaluelow(jumpmodel(sp), 1)
+            x0_trial[t+1] = getvalue_low(jumpmodel(sp), 1)
         end
     end
 
@@ -395,33 +412,33 @@ function backward!(m::MSDDPModel, x_trial::Array{Float64,2}, x0_trial::Vector{Fl
     # Initialize
     α = ones(nstages(m),nstates(m))
     β = ones(nassets(m)+1,nstages(m),nstates(m))
-    ap = m.asset_parameters
+    ap = assetspar(m)
 
     # Add cuts to t < T-1
     for t = nstages(m)-1:-1:2
         for j = 1:nstates(m)
             sp = subproblem(m, t, j)
 
-            chgConstrRHSLow(jumpmodel(sp), sp.cash, x0_trial[t])
-            chgConstrRHSLow(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+            chgrrhs_low!(jumpmodel(sp), sp.cash, x0_trial[t])
+            chgrrhs_low!(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
             for i = 1:nassets(m)
-                chgConstrRHSLow(jumpmodel(sp), sp.assets[i], x_trial[i,t])
+                chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
             end
 
-            status = solvelow(jumpmodel(sp))
+            status = solve_low(jumpmodel(sp))
             if status ≠ :Optimal
                 writeLP(jumpmodel(sp),"prob.lp")
                 error("Can't solve the problem status:",status)
             end
 
             # Evalute custs
-            λ0 = getduallow(jumpmodel(sp), sp.cash)
+            λ0 = getdual_low(jumpmodel(sp), sp.cash)
             λ = zeros(nassets(m))
             for i = 1:nassets(m)
-                λ[i] = getduallow(jumpmodel(sp), sp.assets[i])
+                λ[i] = getdual_low(jumpmodel(sp), sp.assets[i])
             end
-            π = getduallow(jumpmodel(sp), sp.risk)
-            obj = getobjectivevaluelow(jumpmodel(sp))
+            π = getdual_low(jumpmodel(sp), sp.risk)
+            obj = getobjectivevalue_low(jumpmodel(sp))
             α[t,j] =  obj - (λ0 + ap.γ*π)*x0_trial[t] - sum([(λ[i] + ap.γ*π)*x_trial[i,t] for i = 1:nassets(m)])
             β[:,t,j] = vcat(λ0, λ) + ap.γ*π
         end
@@ -467,8 +484,8 @@ function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, 
 end
 
 function solve(model, p::SDDPParameters)
-    sd = model.param
-    ap = model.asset_parameters
+    sd = param(model)
+    ap = assetspar(model)
     x_trial = []
     x0_trial = []
     u_trial = []
@@ -511,14 +528,14 @@ function solve(model, p::SDDPParameters)
 
             # Evaluate upper bound
             sp = subproblem(model, 1, inistate(model))
-            status = solvelow(jumpmodel(sp))
+            status = solve_low(jumpmodel(sp))
             if status ≠ :Optimal
                 writeLP(jumpmodel(sp),"prob.lp")
                 error("Can't solve the problem status:",status)
             end
-            upper = getobjectivevaluelow(jumpmodel(sp)) + initwealth(model)
-            u = getvaluelow(jumpmodel(sp), 2:nassets(model)+1)
-            u0 = getvaluelow(jumpmodel(sp), 1)
+            upper = getobjectivevalue_low(jumpmodel(sp)) + initwealth(model)
+            u = getvalue_low(jumpmodel(sp), 2:nassets(model)+1)
+            u0 = getvalue_low(jumpmodel(sp), 1)
 
             list_firstu = hcat(list_firstu,vcat(u0,u))
 
@@ -634,7 +651,7 @@ function solve(model, p::SDDPParameters)
         states_forward_o = Array(Int64,nstages(model))
         rets_forward_o = zeros(nassets(model),nstages(model))
         addrequire(file, MSDDP)
-        write(file,"SDDPParameters",model.param)
+        write(file,"SDDPParameters",param(model))
         write(file,"MKData",model.markov_data)
         for forwards_lower = 1:3
             simulatestates(model, states_forward_o, rets_forward_o)
