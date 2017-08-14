@@ -134,6 +134,11 @@ nassets(ms::ModelSizes) = ms.nassets
 nstates(ms::ModelSizes) = ms.nstates
 nscen(ms::ModelSizes)   = ms.nscen
 
+setnstages!(ms::ModelSizes, n::Int)   = ms.nstages = n
+setnassets!(ms::ModelSizes, n::Int)   = ms.nassets = n
+setnstates!(ms::ModelSizes, n::Int)   = ms.nstates = n
+setnscen!(ms::ModelSizes, n::Int)     = ms.nscen = n
+
 #  Utils for MSDDPModel
 nstages(m::MSDDPModel) = nstages(m.sizes)
 nassets(m::MSDDPModel) = nassets(m.sizes)
