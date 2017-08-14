@@ -449,42 +449,44 @@ function backward!(m::MSDDPModel, x_trial::Array{Float64,2}, x0_trial::Vector{Fl
         end
 
         for k = 1:nstates(m)
-            addcutlow!(m, α, β, t, k)
+            addcut_low!(m, α, β, t, k)
         end
     end
 end
 
-function addcutlow!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
-    sp = jumpmodel(subproblem(model, stage-1, state))
-    nvariables = CPLEX.num_var(sp.internalModel.inner)
+function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+    jsp = jumpmodel(subproblem(model, stage-1, state))
+    nvariables = CPLEX.num_var(jsp.internalModel.inner)
     u0_id = 1
     u_ids = collect(2:nassets(model)+1)
 
     coef = zeros(Float64, nstates(model)*nscen(model), nvariables)
     rhs = zeros(Float64, nstates(model)*nscen(model))
+    ind_ini = nvariables - nstates(model)*nscen(model)
+    
     for j = 1:nstates(model)
         for s = 1:nscen(model)
-            id_c = s + (j-1)*nscen(model)
-            θ_id = (2+ 3*nassets(model) + nstates(model)*nscen(model)) + id_c
+            ind_const = s + (j-1)*nscen(model)
+            ind_θ = ind_ini + ind_const
 
-            coef[id_c, θ_id] = 1
-            coef[id_c, u0_id] = -β[1,stage,j]
+            coef[ind_const, ind_θ] = 1
+            coef[ind_const, u0_id] = -β[1,stage,j]
             for i = 1:nassets(model)
-                coef[id_c, u_ids[i]] = -β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))
+                coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))
             end
-            rhs[id_c] = α[stage,j]
+            rhs[ind_const] = α[stage,j]
         end
     end
-    CPLEX.add_constrs!(sp.internalModel.inner, coef, '<', rhs)
+    CPLEX.add_constrs!(jsp.internalModel.inner, coef, '<', rhs)
 end
 
 function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
-    sp = jumpmodel(subproblem(model, stage, state))
-    θ = getvariable(jumpmodel(sp),:θ)
-    u = getvariable(jumpmodel(sp),:u)
-    u0 = getvariable(jumpmodel(sp),:u0)
+    jsp = jumpmodel(subproblem(model, stage-1, state))
+    θ = getvariable(jsp,:θ)
+    u = getvariable(jsp,:u)
+    u0 = getvariable(jsp,:u0)
 
-    @constraint(jumpmodel(sp), [j = 1:nstates(model), s = 1:nscen(model)],
+    @constraint(jsp, [j = 1:nstates(model), s = 1:nscen(model)],
     θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
 end
 
