@@ -86,8 +86,10 @@ end
 
 ## Util functions ##
 
-SDDPParameters(max_it::Int64, samplower::Int64, samplower_inc::Int64, nit_before_lower::Int64, gap::Float64, α_lower::Float64 ) =
-    SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, 0.5, 0, true, false, false, true, "")
+SDDPParameters(max_it::Int64, samplower::Int64, samplower_inc::Int64, nit_before_lower::Int64, gap::Float64, α_lower::Float64;
+    diff_upper= 0.5, print_level=0, lowlevel_api=true, parallel=false, simu_lower=false, fast_lower=true, file= "" ) =
+    SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, diff_upper,
+        print_level, lowlevel_api, parallel, simu_lower, fast_lower, file)
 
 " Construct the MSDDPModel without ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
