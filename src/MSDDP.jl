@@ -89,7 +89,7 @@ end
 SDDPParameters(max_it::Int64, samplower::Int64, samplower_inc::Int64, nit_before_lower::Int64, gap::Float64, α_lower::Float64 ) =
     SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, 0.5, 0, true, false, false, true, "")
 
-" Construct the MSDDPModel using ModelSizes "
+" Construct the MSDDPModel without ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
         param::SDDPParameters,
         markov_data::MKData;
@@ -102,7 +102,7 @@ function MSDDPModel(asset_parameters::MAAParameters,
         asset_parameters, param, markov_data)
 end
 
-" Construct the MSDDPModel without ModelSizes "
+" Construct the MSDDPModel using ModelSizes "
 function MSDDPModel(msize::ModelSizes,
         lpsolver::JuMP.MathProgBase.AbstractMathProgSolver,
         asset_parameters::MAAParameters,
@@ -463,7 +463,7 @@ function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::I
     coef = zeros(Float64, nstates(model)*nscen(model), nvariables)
     rhs = zeros(Float64, nstates(model)*nscen(model))
     ind_ini = nvariables - nstates(model)*nscen(model)
-    
+
     for j = 1:nstates(model)
         for s = 1:nscen(model)
             ind_const = s + (j-1)*nscen(model)
