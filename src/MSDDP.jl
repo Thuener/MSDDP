@@ -402,8 +402,8 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
 
         # If transactional cost is different from the optimization model
         if real_transcost != 0.0
-            b = getvariable(jumpmodel(sp),:b)
-            d = getvariable(jumpmodel(sp),:d)
+            b = getindex(jumpmodel(sp),:b)
+            d = getindex(jumpmodel(sp),:d)
             b_v = getvalue(b)
             d_v = getvalue(d)
             x0_trial[t+1] = - sum((1.0+real_transcost)*b_v) + sum((1.0-real_transcost)*d_v) + x0_trial[t]
@@ -484,9 +484,9 @@ end
 
 function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
     jsp = jumpmodel(subproblem(model, stage-1, state))
-    θ = getvariable(jsp,:θ)
-    u = getvariable(jsp,:u)
-    u0 = getvariable(jsp,:u0)
+    θ = getindex(jsp,:θ)
+    u = getindex(jsp,:u)
+    u0 = getindex(jsp,:u0)
 
     @constraint(jsp, [j = 1:nstates(model), s = 1:nscen(model)],
     θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))*u[i] for i = 1:nassets(model)))

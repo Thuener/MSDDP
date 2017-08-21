@@ -91,8 +91,8 @@ function forward(dS::SDPData, dF::ARData, β::Array{Float64,2}, z_l::Array{Float
       writeLP(Q,"prob.lp")
       error("Can't solve the problem status:",status)
     end
-    u0 = getvalue(getvariable(Q,:u0))
-    u = getvalue(getvariable(Q,:u))
+    u0 = getvalue(getindex(Q,:u0))
+    u = getvalue(getindex(Q,:u))
     u = vcat(u0,u)
     all[2:dS.N+1,t] = (u[2:dS.N+1]*W).*(1+rets_t[:,t+1])
     all[1,t] = u[1]*W

@@ -80,11 +80,11 @@ function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, 
       writeLP(H,"prob.lp")
       error("Can't solve the problem status:",status)
     end
-    u = getvariable(H,:u)
+    u = getindex(H,:u)
     for i = 1:dO.N
       x_trial[i,t+1] = (1+rets_t[i,t+1])*getvalue(u[i])
     end
-    x0_trial[t+1] = getvalue(getvariable(H,:u0))
+    x0_trial[t+1] = getvalue(getindex(H,:u0))
   end
   return x_trial, x0_trial
 end
