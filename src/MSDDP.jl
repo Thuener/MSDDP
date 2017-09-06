@@ -8,13 +8,11 @@ using Logging, JLD
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport,  createmodels!, reset!
-export nstages, nassets, nstates, nscen
+export nstages, nassets, nstates, nscen, transcost, probscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
 export chgrrhs_low!
 export memuse
-# Interface functions
-export createmodel!, returns, transprob, transcost, probscen, inirf, iniassets, inialloc, inistate, forward!, backward!,
- initwealth, maximum, param, assetspar
+
 export Subproblem
 
 
@@ -142,6 +140,7 @@ setnstates!(ms::ModelSizes, n::Int)   = ms.nstates = n
 setnscen!(ms::ModelSizes, n::Int)     = ms.nscen = n
 
 #  Utils for MSDDPModel
+msddp(m::MSDDPModel)   = m
 nstages(m::MSDDPModel) = nstages(m.sizes)
 nassets(m::MSDDPModel) = nassets(m.sizes)
 nstates(m::MSDDPModel) = nstates(m.sizes)
@@ -261,6 +260,11 @@ function getdual_low(sp::JuMP.Model, idx::Int64)
     return duals[idx]
 end
 
+function getduals_low(sp::JuMP.Model, ids::Vector{Int})
+    duals = CPLEX.get_constr_duals(sp.internalModel.inner)
+    return duals[ids]
+end
+
 function solve_low(sp::JuMP.Model)
     CPLEX.optimize!(sp.internalModel.inner)
     return CPLEX.status(sp.internalModel)
@@ -362,8 +366,9 @@ function simulatestates(model, states_forward::Vector{Int64}, rets_forward::Arra
   end
 end
 
-function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Float64,2};
-        nstag = nstages(m), real_transcost=0.0)
+function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
+        nstag = nstages(msddp(model)), real_transcost=0.0)
+    m = msddp(model)
 
     # Initialize
     x_trial = zeros(Float64, nassets(m), nstag)
@@ -374,7 +379,7 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
     ap = assetspar(m)
     obj_forward = initwealth(m)
     for t = 1:nstag-1
-        k = states_forward[t]
+        k = states[t]
         sp = subproblem(m, t, k)
 
         chgrrhs_low!(jumpmodel(sp), sp.cash, x0_trial[t])
@@ -389,7 +394,7 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
             error("Can't solve the problem status:",status)
         end
         # Evalute immediate benefit
-        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states_forward[t], returns(m,t+1))
+        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states[t], returns(m,t+1))
 
         # Update trials
         id_u0 = 1
@@ -415,7 +420,8 @@ function forward!(m::MSDDPModel, states_forward::Vector{Int64}, rets::Array{Floa
     return x_trial, x0_trial, obj_forward, u_trial
 end
 
-function backward!(m::MSDDPModel, x_trial::Array{Float64,2}, x0_trial::Vector{Float64})
+function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64})
+    m = msddp(model)
     # Initialize
     α = ones(nstages(m),nstates(m))
     β = ones(nassets(m)+1,nstages(m),nstates(m))
