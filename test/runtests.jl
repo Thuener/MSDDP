@@ -3,7 +3,8 @@ tests = ["lhs",
          "hmm_msddp",
          "inputs",
          "realsimulate",
-         "sdp"]
+         "sdp",
+         "loadcuts"]
 
 @sync @parallel for t in tests
     fp = "$(t).jl"

@@ -7,7 +7,8 @@ using Logging, JLD
 # Types
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 
-export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport,  createmodels!, reset!
+export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport,  createmodels!, reset!,
+loadcuts!, param
 export nstages, nassets, nstates, nscen, transcost, probscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
 export chgrrhs_low!
@@ -420,11 +421,11 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
     return x_trial, x0_trial, obj_forward, u_trial
 end
 
-function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64})
+function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, cutsfile::String)
     m = msddp(model)
     # Initialize
-    α = ones(nstages(m),nstates(m))
-    β = ones(nassets(m)+1,nstages(m),nstates(m))
+    α = ones(nstages(m)-1,nstates(m))
+    β = ones(nassets(m)+1,nstages(m)-1,nstates(m))
     ap = assetspar(m)
 
     # Add cuts to t < T-1
@@ -458,6 +459,53 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64})
 
         for k = 1:nstates(m)
             addcut_low!(m, α, β, t, k)
+        end
+    end
+
+    # Save cuts
+    if cutsfile != ""
+        open(cutsfile,"a") do file
+            writecsv(file, [nassets(m)+1,nstages(m),nstates(m)]')
+            writecsv(file, α)
+            writecsv(file, β)
+        end
+    end
+end
+
+" Load cuts into the model "
+function loadcuts!(model, file::String)
+    open(file,"r") do f
+        while true
+            line = readline(f)
+            line == nothing || line == "" && break
+            items = split(line, ",")
+            nassets_p1 = parse(Int, items[1])
+            nstages = parse(Int, items[2])
+            nstates = parse(Int, items[3])
+            α = Array(Float64, nstages-1, nstates)
+            β = Array(Float64, nassets_p1, nstages-1, nstates)
+            for t = 1:nstages-1
+                line = readline(f)
+                items = split(line, ",")
+                for j = 1:nstates
+                    α[t,j] = parse(Float64,items[j])
+                end
+            end
+            for j = 1:nstates
+                for t = 1:nstages-1
+                    for i = 1:nassets_p1
+                        β[i,t,j] = parse(Float64,readline(f))
+                    end
+                end
+            end
+            # Add cuts to model
+            for t = 1:nstages-1
+                if t != 1
+                    for k = 1:nstates
+                        addcut_low!(msddp(model), α, β, t, k)
+                    end
+                end
+            end
         end
     end
 end
@@ -498,7 +546,11 @@ function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, 
     θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
 end
 
-function solve(model, p::SDDPParameters)
+function solve(model, p::SDDPParameters; cutsfile::String = "")
+    # Delete cutsfile file
+    if cutsfile != ""
+        rm(cutsfile; force=true)
+    end
     sd = param(model)
     ap = assetspar(model)
     x_trial = []
@@ -538,7 +590,7 @@ function solve(model, p::SDDPParameters)
 
             # Backward
             debug("Backward Step memuse $(memuse())")
-            backward!(model, x_trial, x0_trial)
+            backward!(model, x_trial, x0_trial, cutsfile)
 
 
             # Evaluate upper bound
