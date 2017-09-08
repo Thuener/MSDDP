@@ -1,4 +1,4 @@
-using HMM_MSDDP
+using HMM_MSDDP, MSDDP
 using Base.Test, CPLEX
 
 @testset "Real" begin
@@ -121,7 +121,7 @@ using Base.Test, CPLEX
     @test isapprox( x0, [1.0 0.82014 0.845609 0.837851 0.857162 0.830954]'; atol= 1e-3)
     @test isapprox( sum(x,1), [0.0 0.180077 0.167223 0.179511 0.156024 0.161469]; atol= 1e-3)
 
-    setinistate!(m, 2)
+    setinistate!(markov(m), 2)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0  0.82014  0.845609  0.837851  0.857162  0.830954]'; atol= 1e-3)
     @test isapprox( sum(x,1), [0.0  0.180077  0.167223  0.179511  0.156024  0.161469]; atol= 1e-3)

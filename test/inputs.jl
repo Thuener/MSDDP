@@ -1,4 +1,4 @@
-using HMM_MSDDP
+using HMM_MSDDP, MSDDP
 using Distributions, Base.Test, CPLEX
 
 @testset "Inputs" begin
@@ -82,19 +82,19 @@ using Distributions, Base.Test, CPLEX
     @test found == true
 
     setmarkov!(m, mk)
-    setinistate!(m, order[1])
+    setinistate!(markov(m), order[1])
     reset!(m)
     LB, UB = solve(m, m.param)
     @test isapprox( mean(LB), 1.002671; atol= 1e-4)
     @test isapprox( UB      , 1.002671; atol= 1e-4)
 
-    setinistate!(m, order[2])
+    setinistate!(markov(m), order[2])
     reset!(m)
     LB, UB = solve(m, m.param)
     @test isapprox( mean(LB), 1; atol= 1e-4)
     @test isapprox( UB      , 1; atol= 1e-4)
 
-    setinistate!(m, order[3])
+    setinistate!(markov(m), order[3])
     reset!(m)
     LB, UB = solve(m, m.param)
     @test isapprox( mean(LB), 1.0027506; atol= 1e-4)
@@ -103,7 +103,7 @@ using Distributions, Base.Test, CPLEX
     setγ!(m, 0.1)
     setα!(m, 0.95)
     setnstages!(m, 10)
-    setinistate!(m, order[2])
+    setinistate!(markov(m), order[2])
     r = zeros(nstages(m), nassets(m), nstates(m), nscen(m))
     for t = 1:nstages(m)
       r[t,:,:,:] = mk.ret[1,:,:,:]

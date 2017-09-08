@@ -1,5 +1,5 @@
 using Base.Test, CPLEX
-using HMM_MSDDP
+using HMM_MSDDP, MSDDP
 
 @testset "HMM_SDDP" begin
     srand(12345)

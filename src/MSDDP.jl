@@ -8,7 +8,7 @@ using Logging, JLD
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport,  createmodels!, reset!,
-loadcuts!, param
+loadcuts!, param, sizes, markov
 export nstages, nassets, nstates, nscen, transcost, probscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
 export chgrrhs_low!
@@ -38,6 +38,21 @@ type MKData
     prob_scenario_state::Array{Float64,2}   # Probability of each scenario given a state
     ret::Array{Float64,4}                   # Return with stages, assets, states and samples
 end
+
+#  Utils for MKData
+inistate(mkd::MKData)              = mkd.inistate
+transprob(mkd::MKData)             = mkd.transprob
+transprob(mkd::MKData)             = mkd.transprob
+transprob(mkd::MKData, state::Int) = transprob(mkd)[state,:]
+probscen(mkd::MKData)              = mkd.prob_scenario_state
+probscen(mkd::MKData, scen::Int, state::Int) = probscen(mkd)[scen, state]
+
+
+returns(mkd::MKData)               = mkd.ret
+returns(mkd::MKData, stage::Int)   = returns(mkd)[stage,:,:,:]
+returns(mkd::MKData, stage::Int, asset::Int, state::Int, sample::Int)  = returns(mkd)[stage, asset, state, sample]
+
+setinistate!(mkd::MKData, state::Int) = mkd.inistate = state
 
 " Multistage asset allocation model parameters "
 type MAAParameters
@@ -148,6 +163,8 @@ nstates(m::MSDDPModel) = nstates(m.sizes)
 nscen(m::MSDDPModel)   = nscen(m.sizes)
 
 param(m::MSDDPModel)   = m.param
+sizes(m::MSDDPModel)   = m.sizes
+markov(m::MSDDPModel)  = m.markov_data
 assetspar(m::MSDDPModel)   = m.asset_parameters
 
 function inialloc!(m::MSDDPModel, x::AbstractVector{Float64}, rf::Float64)
@@ -162,20 +179,10 @@ iniassets(m::MSDDPModel, index::Int) = iniassets(m)[index]
 inialloc(m::MSDDPModel)              = vcat(inirf(m), iniassets(m))
 inialloct(m::MSDDPModel)             = inirf(m), iniassets(m)
 initwealth(m::MSDDPModel)            = sum(inialloc(m))
-inistate(m::MSDDPModel)              = m.markov_data.inistate
+transcost(m::MSDDPModel)             = m.asset_parameters.transcost
 
 stage(m::MSDDPModel, stage::Int)     = m.stages[stage]
 subproblem(m::MSDDPModel, stage::Int, state::Int) = m.stages[stage].subproblems[state]
-
-transcost(m::MSDDPModel)             = m.asset_parameters.transcost
-transprob(m::MSDDPModel)             = m.markov_data.transprob
-transprob(m::MSDDPModel, state::Int) = transprob(m)[state,:]
-probscen(m::MSDDPModel)              = m.markov_data.prob_scenario_state
-probscen(m::MSDDPModel, scen::Int, state::Int) = probscen(m)[scen, state]
-
-returns(m::MSDDPModel)               = m.markov_data.ret
-returns(m::MSDDPModel, stage::Int)   = returns(m)[stage,:,:,:]
-returns(m::MSDDPModel, stage::Int, asset::Int, state::Int, sample::Int)  = returns(m)[stage, asset, state, sample]
 
 maximum(ap::MAAParameters)           = ap.maximum
 jumpmodel(sp::Subproblem)            = sp.jmodel
@@ -188,7 +195,6 @@ setnscen!(m::MSDDPModel, n::Int)     = m.sizes.nscen = n
 setmarkov!(m::MSDDPModel, mk::MKData)= m.markov_data = mk
 setγ!(m::MSDDPModel, γ::Float64)     = m.asset_parameters.γ = γ
 setα!(m::MSDDPModel, α::Float64)     = m.asset_parameters.α = α
-setinistate!(m::MSDDPModel, state::Int) = m.markov_data.inistate = state
 settranscost!(m::MSDDPModel, tc::Float64) = m.asset_parameters.transcost = tc
 
 function memuse()
@@ -278,9 +284,9 @@ function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Flo
     b = getvalue_low(sp, 2+nassets(model):2*nassets(model)+1)
     d = getvalue_low(sp, 2*(1+nassets(model)):3*nassets(model)+1)
 
-    stateprob = transprob(model, state)
+    stateprob = transprob(markov(model), state)
     B_imed = - transcost(model)*sum(b[i] + d[i] for i = 1:nassets(model)) +
-             sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(model)) )*stateprob[k]*probscen(model, s, k)
+             sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(model)) )*stateprob[k]*probscen(markov(model), s, k)
              for k = 1:nstates(model), s = 1:nscen(model))
     return B_imed
 end
@@ -305,8 +311,8 @@ end
 
 " Add subproblem to model "
 function createmodel!(m::MSDDPModel, stage::Int, state::Int)
-    rets = returns(m, stage+1)
-    probstates = transprob(m, state)
+    rets = returns(markov(m), stage+1)
+    probstates = transprob(markov(m), state)
     ap = assetspar(m)
 
 
@@ -319,15 +325,15 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
     @variable(jmodel, y[1:nstates(m),1:nscen(m)] >= 0)
     @variable(jmodel, θ[1:nstates(m),1:nscen(m)] <= maximum(ap))
     @objective(jmodel, Max, - transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) +
-                  sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(m)) + θ[k,s])*probstates[k]*probscen(m, s, k)
-                  for k = 1:nstates(m), s = 1:nscen(m)))
+        sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(m)) + θ[k,s])*probstates[k]*probscen(markov(m), s, k)
+        for k = 1:nstates(m), s = 1:nscen(m)))
 
     cash = @constraint(jmodel, u0 + sum((1+transcost(m))*b[i] - (1-transcost(m))*d[i] for i = 1:nassets(m)) == inirf(m)).idx
     assets = Array(Int64,nassets(m))
     for i = 1:nassets(m)
         assets[i] = @constraint(jmodel, u[i] - b[i] + d[i] == iniassets(m, i)).idx
     end
-    risk =  @constraint(jmodel,-(z - sum(probstates[k]*probscen(m, s, k)*y[k, s] for k = 1:nstates(m), s = 1:nscen(m))/(1-ap.α))
+    risk =  @constraint(jmodel,-(z - sum(probstates[k]*probscen(markov(m), s, k)*y[k, s] for k = 1:nstates(m), s = 1:nscen(m))/(1-ap.α))
                           + transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) <= ap.γ*initwealth(m)).idx
 
     @constraint(jmodel, trunc[k = 1:nstates(m), s = 1:nscen(m)], y[k,s] >= z - sum(rets[i,k,s]*u[i] for i = 1:nassets(m)))
@@ -352,18 +358,22 @@ function createmodels!(model)
     end
 end
 
-" Simulating forward states "
 function simulatestates(model, states_forward::Vector{Int64}, rets_forward::Array{Float64,2})
-  states_forward[1] = inistate(model)
+    simulatestates(sizes(model), markov(model), states_forward, rets_forward)
+end
 
-  for t = 2:nstages(model)
+" Simulating forward states "
+function simulatestates(sz::ModelSizes, mk::MKData, states_forward::Vector{Int64}, rets_forward::Array{Float64,2})
+  states_forward[1] = inistate(mk)
+
+  for t = 2:nstages(sz)
     # Simulating states
-    prob_trans = vec(transprob(model)[states_forward[t-1],1:nstates(model)])
+    prob_trans = vec(transprob(mk)[states_forward[t-1],1:nstates(sz)])
     states_forward[t] = rand(Categorical(prob_trans))
 
     # Simulationg forward scenarios
-    rand_idx = rand(Categorical(probscen(model)[1:nscen(model),states_forward[t]]))
-    rets_forward[1:nassets(model),t] = returns(model)[t,1:nassets(model),states_forward[t],rand_idx];
+    rand_idx = rand(Categorical(probscen(mk)[1:nscen(sz),states_forward[t]]))
+    rets_forward[1:nassets(sz),t] = returns(mk)[t,1:nassets(sz),states_forward[t],rand_idx];
   end
 end
 
@@ -395,7 +405,7 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
             error("Can't solve the problem status:",status)
         end
         # Evalute immediate benefit
-        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states[t], returns(m,t+1))
+        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states[t], returns(markov(m),t+1))
 
         # Update trials
         id_u0 = 1
@@ -528,7 +538,7 @@ function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::I
             coef[ind_const, ind_θ] = 1
             coef[ind_const, u0_id] = -β[1,stage,j]
             for i = 1:nassets(model)
-                coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))
+                coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(markov(model),stage+1,i,j,s))
             end
             rhs[ind_const] = α[stage,j]
         end
@@ -543,7 +553,8 @@ function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, 
     u0 = getindex(jsp,:u0)
 
     @constraint(jsp, [j = 1:nstates(model), s = 1:nscen(model)],
-    θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*(1+returns(model,stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
+    θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*
+        (1+returns(markov(model),stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
 end
 
 function solve(model, p::SDDPParameters; cutsfile::String = "")
@@ -594,7 +605,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
 
 
             # Evaluate upper bound
-            sp = subproblem(model, 1, inistate(model))
+            sp = subproblem(model, 1, inistate(markov(model)))
             status = solve_low(jumpmodel(sp))
             if status ≠ :Optimal
                 writeLP(jumpmodel(sp),"prob.lp")

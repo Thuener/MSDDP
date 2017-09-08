@@ -135,7 +135,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(mean(LB), 3.4169015108439678)
     @test isapprox(UB, 3.4107004891991517)
 
-    setinistate!(m, 2)
+    setinistate!(markov(m), 2)
     reset!(m)
     LB, UB = solve(m, m.param)
 
@@ -144,7 +144,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     @test isapprox(mean(LB), 3.4138193951948743)
     @test isapprox(UB, 3.4152483430239413)
 
-    setinistate!(m, 3)
+    setinistate!(markov(m), 3)
     reset!(m)
     LB, UB = solve(m, m.param)
 
