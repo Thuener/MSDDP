@@ -5,7 +5,7 @@ using PyCall, Logging, Distributions
 @pyimport hmmlearn.hmm as hl_hmm
 
 #HMM_MSDDP
-export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm
+export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
 #MSDDP
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
@@ -211,4 +211,25 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes)
   return dM, model
 end
 
+function samplhmm(dSI::FFMData, ms::ModelSizes, model, n_scen::Int)
+    np.random[:seed](rand(0:4294967295))
+
+    r = zeros(nassets(ms), nstates(ms), n_scen)
+    samp_ϵ = Array(Float64,nassets(ms), n_scen)
+    for k = 1:nstates(ms)
+        μ = model[:means_][k,:]
+        Σ = model[:covars_][k,:,:]
+        z = lhsnorm(μ, Σ, n_scen, rando=false)'
+        for i = 1:nassets(ms)
+            samp_ϵ[i,:] = lhsnorm(dSI.μ[i], dSI.σ[i], n_scen, rando=true)
+        end
+        for s = 1:n_scen
+            ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
+            # Transform ρ = ln(1+r) in return (r)
+            r[:,k,s] = exp(ρ)-1
+        end
+
+    end
+	return r
+end
 end #HMM_MSDDP
