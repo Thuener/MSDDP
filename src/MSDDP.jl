@@ -114,16 +114,16 @@ function MSDDPModel(asset_parameters::MAAParameters,
         nstates  = size(markov_data.transprob, 1),
         nscen    = size(markov_data.prob_scenario_state, 1),
         lpsolver = ClpSolver())
-    MSDDPModel(ModelSizes(nstages, nassets, nstates, nscen), lpsolver,
-        asset_parameters, param, markov_data)
+    MSDDPModel(ModelSizes(nstages, nassets, nstates, nscen),
+        asset_parameters, param, markov_data, lpsolver)
 end
 
 " Construct the MSDDPModel using ModelSizes "
 function MSDDPModel(msize::ModelSizes,
-        lpsolver::JuMP.MathProgBase.AbstractMathProgSolver,
         asset_parameters::MAAParameters,
         param::SDDPParameters,
-        markov_data::MKData)
+        markov_data::MKData,
+        lpsolver::JuMP.MathProgBase.AbstractMathProgSolver)
     stages = Vector{Stage}(nstages(msize))
     for t = 1:nstages(msize)
         stages[t] = Stage(Vector{Subproblem}(nstates(msize)))
