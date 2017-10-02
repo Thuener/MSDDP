@@ -1,5 +1,5 @@
-using HMM_MSDDP, AR, SDP
-using Distributions, HypothesisTests
+using MSDDP, HMM_MSDDP, AR, SDP
+using Distributions, HypothesisTests, CPLEX
 using Logging, ArgParse
 import StatsBase
 
@@ -10,6 +10,7 @@ function bestsamples_ttest(dS, output_dir, j)
   samps = collect(250:250:2500)
   len_samps = length(samps)
   MRets = zeros(Float64, len_samps)
+  Stds = zeros(Float64, len_samps)
   PVals = zeros(Float64,len_samps)
   best_s = 0
   rets_ = rets[:,1:dS.T,:]
@@ -24,6 +25,7 @@ function bestsamples_ttest(dS, output_dir, j)
       w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
       Ws[se] = w
     end
+    Stds[i] = std(Ws)
     MRets[i] = mean(Ws)
     info("Mean return simulation $(MRets[i])")
 
@@ -36,7 +38,7 @@ function bestsamples_ttest(dS, output_dir, j)
       if DEBUG
         writecsv(string(output_dir,file_name,"_$(γ_srt)$(dS.S)_ret$j.csv"), Ws)
       end
-      writecsv(string(output_dir,file_name,"_$(γ_srt)_table_samp$j.csv"),hcat(MRets,PVals))
+      writecsv(string(output_dir,file_name,"_$(γ_srt)_table_samp$j.csv"),hcat(MRets,Stds,PVals))
       if pvalue(ttest) < 0.05
         pvaluelow = true
       elseif pvaluelow
@@ -58,19 +60,20 @@ function bestsamples_ttest(dS, output_dir, j)
 end
 
 # Choose the number of sates for the HMM using SDP
-function beststate_ttest(dH, dF, dS, output_dir, j)
+function beststate_ttest(ms, maa, psddp, dF, dS, output_dir, j)
   max_state = 7
 
   UBs = zeros(Float64,max_state)
   PVals = zeros(Float64,max_state)
   MRets = zeros(Float64,2,max_state)
+  Stds = zeros(Float64,2,max_state)
   best_k = 0
-  rets_ = rets[:,1:dH.T,:]
+  rets_ = rets[:,1:nstages(ms),:]
 
   # Run SDP
   β = backward(dF, dS, z_l)
   Ws = Array(Float64, Sc)
-  all_SDP = zeros(Float64,dH.N+1,dH.T,Sc)
+  all_SDP = zeros(Float64,nassets(ms)+1,nstages(ms),Sc)
   x_ini = [1.0;zeros(N)]
   for se = 1:Sc
     w, all = forward(dS, dF, β, z_l, vec(z[:,se]), rets_[:,:,se])
@@ -78,53 +81,56 @@ function beststate_ttest(dH, dF, dS, output_dir, j)
     Ws[se] = w
   end
   MRets[2,1] = mean(Ws)
-  γ_srt = string(dH.γ)[3:end]
-  writecsv(string(output_dir,file_name,"_$(γ_srt)_SDP_all$j.csv"),reshape(all_SDP,dH.N+1,(dH.T)*Sc)')
+  Stds[2,1] = std(Ws)
+  γ_srt = string(maa.γ)[3:end]
+  writecsv(string(output_dir,file_name,"_$(γ_srt)_SDP_all$j.csv"),reshape(all_SDP,nassets(ms)+1,(nstages(ms))*Sc)')
+  DEBUG && writecsv(string(output_dir,file_name,"_$(γ_srt)_w$j.csv"),Ws)
 
   for k=1:max_state
-    dH.K = k
+    setnstates!(ms,k)
 
     # HMM data
-    #dM, model = inithmm_z(reshape(ln_ret, dH.N +1, T_hmm*Sc)', dH, T_hmm, Sc)
+    #dM, model = inithmm_z(reshape(ln_ret, nassets(ms) +1, T_hmm*Sc)', dH, T_hmm, Sc)
     z_slothmm = splitequaly(k, z)
-    v_hmm = dF.Σ[dH.N+1,dH.N+1]*ones(k)
-    dM, model = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
+    v_hmm = dF.Σ[nassets(ms)+1,nassets(ms)+1]*ones(k)
+    mk, hmm = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, ms, T_hmm, Sc, z_slothmm, v_hmm)
 
     info("Train SDDP with $k states")
-    @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+    model = MSDDPModel(ms, maa, psddp, mk, CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
+    @time LB, UB, LB_c, AQ, sp, = solve(model, param(model))
     UBs[k] = UB
 
     #Simulate
     info("Simulating SDDP")
     ret_c = zeros(Float64,Sc)
-    count_states = zeros(Int64,dH.K)
-    all_c = zeros(Float64,dH.N+1,dH.T,Sc)
+    count_states = zeros(Int64,nstates(ms))
+    all_c = zeros(Float64,nassets(ms)+1,nstages(ms),Sc)
     for s=1:Sc
-      #states = predict(model,ln_ret[:,1:dH.T-1,s]')
-      states = predict(model,z[1:dH.T-1,s])
-      count_states .+= StatsBase.counts(states,1:dH.K)
-      x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,s], states)
+      #states = predict(model,ln_ret[:,1:nstages(ms)-1,s]')
+      states = predict(hmm, z[1:nstages(ms)-1,s])
+      count_states .+= StatsBase.counts(states,1:nstates(ms))
+      x, x0, exp_ret = simulate(model, rets_[:,:,s], states)
       all_c[:,:,s] = vcat(x0',x)
       ret_c[s] = x0[end]+sum(x[:,end])
     end
     debug("count_states =", count_states)
     MRets[1,k] = mean(ret_c)
+    Stds[1,k] = std(Ws-ret_c)
     info("Mean return simulation $(MRets[k])")
 
 
     # Test t
-    ttest = OneSampleTTest(ret_c,Ws)
-    PVals[k] = pvalue(ttest)
+    ttest = OneSampleTTest(Ws,ret_c)
+    PVals[k] = pvalue(ttest, tail=:left)
     info("pvalue $(pvalue(ttest)) with $k states")
     if DEBUG
-      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_all$j.csv"),reshape(all_c,dH.N+1,(dH.T)*Sc)')
+      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_all$j.csv"),reshape(all_c,nassets(ms)+1,(nstages(ms))*Sc)')
       writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_ret$j.csv"),ret_c)
-      writecsv(string(output_dir,file_name,"_$(γ_srt)$(k)_w$j.csv"),Ws)
     end
-    writecsv(string(output_dir,file_name,"_$(γ_srt)_table_states$j.csv"),hcat(UBs,MRets',PVals))
+    writecsv(string(output_dir,file_name,"_$(γ_srt)_table_states$j.csv"),hcat(UBs,MRets',Stds',PVals))
     if pvalue(ttest) >= 0.05
       info("Fail to reject hypoteses with $k states. pvalue $(pvalue(ttest))")
-      best_k = dH.K
+      best_k = nstates(ms)
       #break
     end
 
@@ -167,7 +173,7 @@ else
   Logging.configure(level=Logging.INFO)
 end
 
-srand(123)
+srand(111)
 T_max = 240
 N = 3
 Sc = 1000
@@ -189,17 +195,17 @@ T = 13
 K = 4
 S = 750
 α = 0.9
-W_ini = 1.0
-x_ini_s = [W_ini;zeros(N)]
+x0_ini = 1.0
+x_ini = zeros(N)
 c = 0.00
-M = 9999999
+maxvl = 9999999
 γ = 0.012
-S_LB = 300
-S_LB_inc = 100
-S_FB = 100
-GAPP = 1
-Max_It = 100
-α_lB = 0.9
+samplower = 300
+samplower_inc = 100
+nit_before_lower = 100
+gap = 1.
+max_it = 100
+α_lower = 0.9
 
 γs = [0.02,0.05,0.08,0.1,0.2]
 cs = [0.005,0.01,0.02]
@@ -250,11 +256,12 @@ if args["stat"]
       dS.γ = γ
       info("Start testes with γ = $(dS.γ)")
 
-      dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
-                      S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
-      output_dir = "../../output/"
+      ms = ModelSizes(T, N, K, S)
+      maa = MAAParameters(α, γ, c, x_ini, x0_ini, maxvl)
+      psddp = SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower)
 
-      best_ks[i_γ] = beststate_ttest(dH, dF, dS, output_dir, j)
+      output_dir = "../../output/"
+      best_ks[i_γ] = beststate_ttest(ms, maa, psddp, dF, dS, output_dir, j)
       writecsv(string(output_dir, file_name, "_best_K$(j).csv"),best_ks)
     end
   end
