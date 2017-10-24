@@ -758,7 +758,7 @@ function simulate(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_tr
   if samps != nstages(model)
     error("Return series has to have $(nstages(model)) and has $(nsamp) samples, use simulatesw if you want to really do that.")
   end
-  x, x0, exp_ret, u = forward!(model, states, rets, real_transcost=real_transcost)
+  x, x0, exp_ret, u = MSDDP.forward!(model, states, rets, real_transcost=real_transcost)
 
   return x, x0, exp_ret
 end
@@ -775,7 +775,7 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
      rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
      states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
-     x, x0, expret, u = forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
+     x, x0, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
      all_x = hcat(all_x, x[:,2:end])
      all_x0 = vcat(all_x0, x0[2:end])
      inialloc!(mcopy, x[:,end], x0[end])
@@ -788,7 +788,7 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
      states_forward_a = Array(Int64,diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
-     x, x0, expret, u = forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
+     x, x0, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
      all_x = hcat(all_x, x[:,2:end])
      all_x0 = vcat(all_x0, x0[2:end])
    end
