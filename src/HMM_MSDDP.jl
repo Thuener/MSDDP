@@ -5,7 +5,7 @@ using PyCall, Logging, Distributions
 @pyimport hmmlearn.hmm as hl_hmm
 
 #HMM_MSDDP
-export train_hmm, score, predict, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
+export train_hmm, score, predict, predictsw, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
 #MSDDP
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
@@ -81,6 +81,21 @@ function predict(model, data::Array{Float64,2})
 	states = Array(Int64,samples)
 	for i = 1:samples
 		states[i] = (model[:predict](data[1:i,:]) .+1)[end]
+	end
+	return states
+end
+
+""" Predict function using slide windows """
+function predictsw(model, data::Array{Float64,1}, window::Int64)
+	predictsw(model,(data')', window)
+end
+
+""" Predict function using slide windows """
+function predictsw(model, data::Array{Float64,2}, window::Int64)
+	samples = size(data,1)
+	states = Array(Int64,samples-window+1)
+	for i = window:samples
+		states[i-window+1] = (model[:predict](data[(i-window+1):i,:]) .+1)[end]
 	end
 	return states
 end
