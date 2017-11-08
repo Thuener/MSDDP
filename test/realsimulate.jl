@@ -96,6 +96,13 @@ using Base.Test, CPLEX
     setnstages!(m, 5)
 
     # Changing the CVaR limit
+    setγ!(m, 0.0000001)
+    reset!(m)
+    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    x, x0 = simulatesw(m, ret_test', k_test)
+    @test isapprox( x0, ones(6); atol= 1e-4)
+    @test isapprox( sum(x,1), zeros(6)'; atol= 1e-4)
+
     setγ!(m, 0.01)
     reset!(m)
     LB, UB, LB_c, AQ, sp, = solve(m, m.param)
@@ -111,6 +118,7 @@ using Base.Test, CPLEX
     @test isapprox( sum(x,1), [0.0 0.13135755326039203 0.14063678671081967 0.1392334351395846 0.13554198547240695 0.12111184993069664]; atol= 1e-4)
 
     # Changing the number of states
+    srand(1234)
     setnstates!(m, 3)
     mk, hmm = inithmm(m.sizes, ret_train)
     setmarkov!(m, mk)
@@ -118,13 +126,13 @@ using Base.Test, CPLEX
 
     LB, UB, LB_c, AQ, sp, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
-    @test isapprox( x0, [1.0 0.82014 0.845609 0.837851 0.857162 0.830954]'; atol= 1e-3)
-    @test isapprox( sum(x,1), [0.0 0.180077 0.167223 0.179511 0.156024 0.161469]; atol= 1e-3)
+    @test isapprox( x0, [1.0,0.842685,0.854163,0.83551,0.836874,0.855227]; atol= 1e-3)
+    @test isapprox( sum(x,1), [0.0 0.158198 0.159443 0.181837 0.178009 0.141161]; atol= 1e-3)
 
     setinistate!(markov(m), 2)
     x, x0 = simulatesw(m, ret_test', k_test)
-    @test isapprox( x0, [1.0  0.82014  0.845609  0.837851  0.857162  0.830954]'; atol= 1e-3)
-    @test isapprox( sum(x,1), [0.0  0.180077  0.167223  0.179511  0.156024  0.161469]; atol= 1e-3)
+    @test isapprox( x0, [1.0,0.842685,0.854163,0.83551,0.836874,0.855227]; atol= 1e-3)
+    @test isapprox( sum(x,1), [0.0 0.158198 0.159443 0.181837 0.178009 0.141161]; atol= 1e-3)
 
     setγ!(m, 0.1)
     setα!(m, 0.95)
