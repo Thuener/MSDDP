@@ -69,10 +69,10 @@ function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, 
     H, subp = createmodel(dO, p_s, r_s, Q_s)
 
     # Change x
-    MSDDP.chgConstrRHS(H, subp.cash, x0_trial[t])
-    MSDDP.chgConstrRHS(H, subp.risk, dO.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+    MSDDP.chgrrhs(H, subp.cash, x0_trial[t])
+    MSDDP.chgrrhs(H, subp.risk, dO.γ*(sum(x_trial[:,t])+x0_trial[t]) )
     for i = 1:dO.N
-      MSDDP.chgConstrRHS(H, subp.assets[i], x_trial[i,t])
+      MSDDP.chgrrhs(H, subp.assets[i], x_trial[i,t])
     end
 
     status = solve(H)
