@@ -3,6 +3,10 @@ using MSDDP, LHS, AR, FFM
 using PyCall, Logging, Distributions
 @pyimport numpy as np
 @pyimport hmmlearn.hmm as hl_hmm
+# Remove annoying deprecated warning from python
+@pyimport warnings
+@pyimport exceptions
+warnings.filterwarnings("ignore", category=exceptions.DeprecationWarning)
 
 #HMM_MSDDP
 export train_hmm, score, predict, predictsw, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
