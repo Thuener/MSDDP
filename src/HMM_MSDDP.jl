@@ -189,8 +189,8 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, ms::ModelSizes, nperiods::I
   return dM, model
 end
 
-function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes)
-	np.random[:seed](rand(0:4294967295))
+function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes; seed = rand(0:4294967295))
+	np.random[:seed](seed)
 
   model = train_hmm(ff, nstates(ms))
 
