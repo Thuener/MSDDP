@@ -1,7 +1,7 @@
 # Simulate AR model from Brown and create an efficient frontier
-using MSDDP, HMM_MSDDP, AR, Util
+using MSDDP, HMM_MSDDP, AR
 import OneStep, SDP
-using Distributions, Logging
+using Distributions, Logging, CPLEX
 Logging.configure(level=Logging.DEBUG)
 
 srand(123)
@@ -10,12 +10,18 @@ include("parametersAR.jl")
 dF = ARData(a_z, a_r, b_z, b_r, Σ, r_f)
 
 # Parmeters
-dH  = MSDDPData( N, T, K, S, α, x_ini_s[2:N+1], x_ini_s[1], W_ini, c, M, γ,
-                S_LB, S_LB_inc, S_FB, GAPP, Max_It, α_lB )
+ms = ModelSizes(T, N, K, S)
+maa = MAAParameters(α, γ, c, x_ini, x0_ini, maxvl)
+psddp = SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower; diff_upper = 0.01)
+debug("ms $ms")
+debug("maa $maa")
+debug("psddp $psddp")
 
 # One Step data
-dO = OneStep.OSData(N, T, L, S, α, c, γ, true, x_ini_s[2:N+1], x_ini_s[1])
+dO = OneStep.OSData(N, T, L, S, α, c, γ, true, x_ini, x0_ini)
 dS = SDP.SDPData(N, T, L, S, α, γ)
+debug("dO $dO")
+debug("dS $dS")
 
 #########################################################################################################################
 tic()
@@ -28,25 +34,27 @@ z_l = SDP.splitequaly(dS.L, z)
 
 # HMM data
 info("Train HMM")
-z_slothmm = SDP.splitequaly(dH.K, z)
-v_hmm = dF.Σ[dH.N+1,dH.N+1]*ones(dH.K)
-dM, model = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, dH, T_hmm, Sc, z_slothmm, v_hmm)
+z_slothmm = SDP.splitequaly(nstates(ms), z)
+v_hmm = dF.Σ[nassets(ms)+1,nassets(ms)+1]*ones(nstates(ms))
+mk, hmm = inithmm_ar(z[T_max-T_hmm+1:T_max,:], dF, ms, T_hmm, Sc, z_slothmm, v_hmm)
 
-states = Array(Int64,Ts[end],Sc)
+model = MSDDPModel(ms, maa, psddp, mk, CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
+
+states = Array(Int64, Ts[end], Sc)
 for se = 1:Sc
-  states[:,se] = predict(model,z[1:Ts[end],se])
+  states[:,se] = predict(hmm, z[1:Ts[end], se])
 end
 
-function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
+function runMSDDP(model, Sc, rets_, states, ret_p)
   info("Memory use $(memuse())")
   ############ MSDDP ###########
   info("#### MSDDP ####")
   info("Training MSDDP...")
-  @time LB, UB, LB_c, AQ, sp, = sddp(dH, dM)
+  @time LB, UB, LB_c, = solve(model, param(model))
 
   info("Simulating MSDDP...")
   for se = 1:Sc
-    x, x0, exp_ret = simulate(dH, dM, AQ, sp, rets_[:,:,se], states[:,se])
+    x, x0, exp_ret = simulate(model, rets_[:,:,se], states[:,se])
     ret_p[1,se] = x0[end]+sum(x[:,end])
   end
   info("Memory use $(memuse())")
@@ -87,19 +95,23 @@ function runOSFC(dF, dS, z_l, rets_, z, ret_p)
   u_l =0; Q_l =0; H_l =0; sp =0; x =0; x0 =0;
 end
 
-for dH.T in Ts
-  dS.T = dO.T = dH.T
-  rets_ = rets[:,1:dH.T,:]
+for t in Ts
+  setnstages!(model, t)
+  dS.T = dO.T = nstages(model)
+  rets_ = rets[:,1:nstages(model),:]
   rets_p = zeros(3*3,length(γs),length(cs))
-  file = string(output_dir,file_name,"_$(dH.T)_table.csv")
+  file = string(output_dir, file_name, "_$(nstages(model))_table.csv")
   for i_c = 1:length(cs)
-    dH.c = dO.c = cs[i_c]
+    dO.c = cs[i_c]
+    settranscost!(model, cs[i_c])
     for i_γ = 1:length(γs)
-      dH.γ = dS.γ = dO.γ = γs[i_γ]
-      debug(dH)
-      ret_p = SharedArray(Float64,3,Sc)
-      info("Start testes with γ = $(dH.γ), c = $(dH.c) and T = $(dH.T)")
-      runMSDDP(dH, dM, Sc, rets_, states, ret_p)
+      dS.γ = dO.γ = γs[i_γ]
+      setγ!(model, γs[i_γ])
+      reset!(model)
+      debug("assetspar(model) $(MSDDP.assetspar(model))")
+      ret_p = SharedArray(Float64, 3, Sc)
+      info("Start testes with γ = $(γs[i_γ]), c = $(cs[i_c]) and T = $(nstages(model))")
+      runMSDDP(model, Sc, rets_, states, ret_p)
       gc()
       info("Memory use $(memuse())")
       dO.Mod = false
@@ -116,7 +128,7 @@ for dH.T in Ts
         rets_p[i+6,i_γ,i_c] = m + (quantile(Normal(),0.975) * std(ret_p[i,:]) / sqrt(Sc))
       end
       open(file,"a") do x
-        writecsv(x,hcat(dH.c, dH.γ,rets_p[:,i_γ,i_c]'))
+        writecsv(x,hcat(cs[i_c], γs[i_γ], rets_p[:,i_γ,i_c]'))
       end
     end
   end

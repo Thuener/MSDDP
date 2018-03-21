@@ -13,20 +13,20 @@ r_f = 0.00042
 # Parmeters
 N = 3
 T = 12
-K = 4
+K = 3
 S = 750
 α = 0.9
-W_ini = 1.0
-x_ini_s = [W_ini;zeros(N)]
+x0_ini = 1.0
+x_ini = zeros(N)
 c = 0.005
-M = 9999999
+maxvl = 9999999
 γ = 0.02
-S_LB = 300
-S_LB_inc = 100
-S_FB = 100
-GAPP = 1
-Max_It = 15
-α_lB = 0.9
+samplower = 300
+samplower_inc = 100
+nit_before_lower = 100
+gap = 0.05
+max_it = 15
+α_lower = 0.9
 
 L = 1000
 

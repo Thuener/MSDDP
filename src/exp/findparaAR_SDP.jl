@@ -97,7 +97,7 @@ function beststate_ttest(ms, maa, psddp, dF, dS, output_dir, j)
 
     info("Train SDDP with $k states")
     model = MSDDPModel(ms, maa, psddp, mk, CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
-    @time LB, UB, LB_c, AQ, sp, = solve(model, param(model))
+    @time LB, UB, LB_c, = solve(model, param(model))
     UBs[k] = UB
 
     #Simulate
@@ -203,7 +203,7 @@ maxvl = 9999999
 samplower = 300
 samplower_inc = 100
 nit_before_lower = 100
-gap = 1.
+gap = 0.05
 max_it = 100
 α_lower = 0.9
 

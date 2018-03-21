@@ -39,7 +39,7 @@ using Base.Test, CPLEX
         mk;
         lpsolver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
 
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
 
     k_test = predict(hmm, ret_test)
     ret_test = exp(ret_test)-1
@@ -98,21 +98,21 @@ using Base.Test, CPLEX
     # Changing the CVaR limit
     setγ!(m, 0.0000001)
     reset!(m)
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, ones(6); atol= 1e-4)
     @test isapprox( sum(x,1), zeros(6)'; atol= 1e-4)
 
     setγ!(m, 0.01)
     reset!(m)
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0,0.8860859495014164,0.8842791657544444,0.8897186841157093,0.8933673366398218,0.8937438748760086]; atol= 1e-4)
     @test isapprox( sum(x,1), [0.0 0.11187498899671838 0.11982058846955264 0.11849878862776717 0.11527508160290185 0.10299505426932623]; atol= 1e-4)
 
     setα!(m, 0.90)
     reset!(m)
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0,0.8662482911536769,0.864174357968608,0.8704159370107242,0.8746070432895877,0.8750398699756242]; atol= 1e-4)
     @test isapprox( sum(x,1), [0.0 0.13135755326039203 0.14063678671081967 0.1392334351395846 0.13554198547240695 0.12111184993069664]; atol= 1e-4)
@@ -124,7 +124,7 @@ using Base.Test, CPLEX
     setmarkov!(m, mk)
     reset!(m)
 
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0,0.842685,0.854163,0.83551,0.836874,0.855227]; atol= 1e-3)
     @test isapprox( sum(x,1), [0.0 0.158198 0.159443 0.181837 0.178009 0.141161]; atol= 1e-3)
@@ -143,14 +143,14 @@ using Base.Test, CPLEX
     end
     mk.ret = r
     reset!(m)
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0 0.0 0.0 0.0 0.0 0.0]'; atol= 1e-3)
     @test isapprox( sum(x,1), [0.0 1.011 1.10068 1.11168 1.08111 0.942297]; atol= 1e-3)
 
     setnstages!(m, 2)
     reset!(m)
-    LB, UB, LB_c, AQ, sp, = solve(m, m.param)
+    LB, UB, LB_c, = solve(m, m.param)
     x, x0 = simulatesw(m, ret_test', k_test)
     @test isapprox( x0, [1.0 0.0 0.0 0.0 0.0 0.0]'; atol= 1e-3)
     @test isapprox( sum(x,1), [0.0  1.011  1.10068  1.11168  1.08111  0.942297]; atol= 1e-3)

@@ -39,7 +39,7 @@ using Base.Test, CPLEX
         mk;
         lpsolver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
 
-    LB, UB, LB_c, AQ, sp, = solve(morig, param(morig); cutsfile="cuts.csv")
+    LB, UB, LB_c, = solve(morig, param(morig); cutsfile="cuts.csv")
 
     m = MSDDPModel(MAAParameters(α, γ, c, x_ini, x0_ini, maxvl),
         SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower),
@@ -62,7 +62,7 @@ using Base.Test, CPLEX
     setmarkov!(morig, mk)
     reset!(morig)
 
-    LB, UB, LB_c, AQ, sp, = solve(morig, param(morig); cutsfile="cuts.csv")
+    LB, UB, LB_c, = solve(morig, param(morig); cutsfile="cuts.csv")
     x, x0 = simulatesw(morig, ret_test', k_test)
     m = MSDDPModel(MAAParameters(α, γ, c, x_ini, x0_ini, maxvl),
         SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower),
