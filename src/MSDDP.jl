@@ -418,6 +418,7 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
 
         # If transactional cost is different from the optimization model
         if real_transcost != 0.0
+            error("Adjust the issue first")
             b = getindex(jumpmodel(sp),:b)
             d = getindex(jumpmodel(sp),:d)
             b_v = getvalue(b)
@@ -501,12 +502,8 @@ function loadcuts!(model, file::String)
                     α[t,j] = parse(Float64,items[j])
                 end
             end
-            for j = 1:nstates
-                for t = 1:nstages-1
-                    for i = 1:nassets_p1
-                        β[i,t,j] = parse(Float64,readline(f))
-                    end
-                end
+            for j = 1:nstates, t = 1:nstages-1, i = 1:nassets_p1
+                β[i,t,j] = parse(Float64,readline(f))
             end
             # Add cuts to model
             for t = 1:nstages-1
@@ -530,18 +527,16 @@ function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::I
     rhs = zeros(Float64, nstates(model)*nscen(model))
     ind_ini = nvariables - nstates(model)*nscen(model)
 
-    for j = 1:nstates(model)
-        for s = 1:nscen(model)
-            ind_const = s + (j-1)*nscen(model)
-            ind_θ = ind_ini + ind_const
+    for j = 1:nstates(model), s = 1:nscen(model)
+        ind_const = s + (j-1)*nscen(model)
+        ind_θ = ind_ini + ind_const
 
-            coef[ind_const, ind_θ] = 1
-            coef[ind_const, u0_id] = -β[1,stage,j]
-            for i = 1:nassets(model)
-                coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(markov(model),stage+1,i,j,s))
-            end
-            rhs[ind_const] = α[stage,j]
+        coef[ind_const, ind_θ] = 1
+        coef[ind_const, u0_id] = -β[1,stage,j]
+        for i = 1:nassets(model)
+            coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(markov(model),stage+1,i,j,s))
         end
+        rhs[ind_const] = α[stage,j]
     end
     CPLEX.add_constrs!(jsp.internalModel.inner, coef, '<', rhs)
 end
@@ -557,7 +552,7 @@ function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, 
         (1+returns(markov(model),stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
 end
 
-function solve(model, p::SDDPParameters; cutsfile::String = "")
+function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
     # Delete cutsfile file
     if cutsfile != ""
         rm(cutsfile; force=true)
@@ -590,7 +585,8 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
     lower_conserv  = 0.0
     eps_upper      = 1e-6
     forwards_lower = 0 # number of forwards to evaluate lower bound
-    while abs(gap) > p.gap && upper > eps_upper && it < p.max_iterations
+    timeini = time()
+    while abs(gap) > p.gap && upper > eps_upper && it < p.max_iterations && (time() - timeini) < timelimit
         it += 1
         tic()
         for it_forward_backward = 1:p.nit_before_lower
@@ -618,27 +614,29 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
             list_firstu = hcat(list_firstu,vcat(u0,u))
 
             debug("obj forward = $obj_forward, upper bound = $upper, stab upper $(abs(upper/upper_last -1)*100)")
-            if p.fast_lower && (abs(upper/upper_last -1)*100 < p.diff_upper || upper < eps_upper || isnan(abs(upper/upper_last -1)*100))
-                it_stable += 1
-                if it_stable >= 5
-                    if p.samplower < 30*samplower_ini
-                        p.samplower = round(Int64,p.samplower + p.samplower_inc)
-                        info("Stable upper bound, increasing samples for lower bound for $(p.samplower)")
-                        if p.parallel
-                            lower = SharedArray(Float64,p.samplower)
-                        else
-                            lower = Array(Float64,p.samplower)
+            if p.fast_lower
+                if (abs(upper/upper_last -1)*100 < p.diff_upper || upper < eps_upper || isnan(abs(upper/upper_last -1)*100))
+                    it_stable += 1
+                    if it_stable >= 5
+                        if p.samplower < 30*samplower_ini
+                            p.samplower = round(Int64,p.samplower + p.samplower_inc)
+                            info("Stable upper bound, increasing samples for lower bound for $(p.samplower)")
+                            if p.parallel
+                                lower = SharedArray(Float64,p.samplower)
+                            else
+                                lower = Array(Float64,p.samplower)
+                            end
                         end
+                        break
                     end
-                    break
-                end
-            else
-                it_stable = 0
-                p.samplower = samplower_ini
-                if p.parallel
-                    lower = SharedArray(Float64,p.samplower)
                 else
-                    lower = Array(Float64,p.samplower)
+                    it_stable = 0
+                    p.samplower = samplower_ini
+                    if p.parallel
+                        lower = SharedArray(Float64,p.samplower)
+                    else
+                        lower = Array(Float64,p.samplower)
+                    end
                 end
             end
             upper_last = upper
@@ -646,9 +644,9 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
 
         # Lower bound
         debug("Evaluating the Lower Bound memuse $(memuse())")
-        lower_conserv = 0
-        gap = 100
-        sumlower =0
+        lower_conserv = 0.
+        gap = 100.
+        sumlower =0.
         doub_samplower = false
         for forwards_lower = 1:p.samplower
             simulatestates(model, states_forward, rets_forward)
@@ -721,6 +719,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
             info("SDDP ended: upper bound is zero")
             break
         end
+        gap = isnan(gap) ? Inf : gap
     end
 
     if p.simu_lower
@@ -740,7 +739,8 @@ function solve(model, p::SDDPParameters; cutsfile::String = "")
         end
     end
     p.samplower = samplower_ini
-    return lower[1:forwards_lower], upper, lower_conserv, model, vcat(x0_trial',x_trial), u_trial, list_lowers, list_uppers, list_firstu
+    x_trial_  = forwards_lower != 0 ? vcat(x0_trial',x_trial) : x0_trial'
+    return lower[1:forwards_lower], upper, lower_conserv, x_trial_, u_trial, list_lowers, list_uppers, list_firstu
 end
 
 function simulate_stateprob(model, rets::Array{Float64,2}, probret_state::Array{Float64,2}; real_transcost=0.0)
@@ -784,7 +784,6 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
    # Simulate last periods
    diff_t = round(Int, stages_test-1 - (its*(nstages(mcopy)-1)))
    if diff_t > 0
-     rets_forward_a   = zeros(nassets(mcopy),diff_t)
      states_forward_a = Array(Int64,diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
