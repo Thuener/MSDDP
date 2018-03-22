@@ -388,7 +388,7 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
     x0_trial[1] = inirf(m)
     u_trial = zeros(nassets(m)+1, nstag)
     ap = assetspar(m)
-    obj_forward = initwealth(m)
+    obj_forward = 0.0
     for t = 1:nstag-1
         k = states[t]
         sp = subproblem(m, t, k)
@@ -607,7 +607,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
                 writeLP(jumpmodel(sp),"prob.lp")
                 error("Can't solve the problem status:",status)
             end
-            upper = getobjectivevalue_low(jumpmodel(sp)) + initwealth(model)
+            upper = getobjectivevalue_low(jumpmodel(sp))
             u = getvalue_low(jumpmodel(sp), 2:nassets(model)+1)
             u0 = getvalue_low(jumpmodel(sp), 1)
 

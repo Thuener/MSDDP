@@ -18,7 +18,7 @@ using Distributions, Base.Test, CPLEX
     samplower = 1000
     samplower_inc = 100
     nit_before_lower = 1
-    gap = 1.
+    gap = 2.
     max_it = 100
     α_lower = 0.9
 
@@ -37,28 +37,28 @@ using Distributions, Base.Test, CPLEX
 
 
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.0943571; atol= 1e-4)
-    @test isapprox( UB      , 1.0940507; atol= 1e-4)
+    @test isapprox( mean(LB), 0.0943571; atol= 1e-4)
+    @test isapprox( UB      , 0.0940507; atol= 1e-4)
 
     # Changing some parameters
     info("Test with same base changing some parameters")
     setγ!(m, 0.01)
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.012397; atol= 1e-4)
-    @test isapprox( UB      , 1.012393; atol= 1e-4)
+    @test isapprox( mean(LB), 0.012397; atol= 1e-4)
+    @test isapprox( UB      , 0.012393; atol= 1e-4)
 
     setα!(m, 0.90)
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.014320; atol= 1e-4)
-    @test isapprox( UB      , 1.014329; atol= 1e-4)
+    @test isapprox( mean(LB), 0.014320; atol= 1e-4)
+    @test isapprox( UB      , 0.014329; atol= 1e-4)
 
     setnstages!(m, 2)
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.0015821; atol= 1e-4)
-    @test isapprox( UB      , 1.0015821; atol= 1e-4)
+    @test isapprox( mean(LB), 0.0015821; atol= 1e-4)
+    @test isapprox( UB      , 0.0015821; atol= 1e-4)
 
     # Changing the number of states
     setnstates!(m, 3)
@@ -85,20 +85,20 @@ using Distributions, Base.Test, CPLEX
     setinistate!(markov(m), order[1])
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.002671; atol= 1e-4)
-    @test isapprox( UB      , 1.002671; atol= 1e-4)
+    @test isapprox( mean(LB), 0.002671; atol= 1e-4)
+    @test isapprox( UB      , 0.002671; atol= 1e-4)
 
     setinistate!(markov(m), order[2])
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1; atol= 1e-4)
-    @test isapprox( UB      , 1; atol= 1e-4)
+    @test isapprox( mean(LB), 0.; atol= 1e-4)
+    @test isapprox( UB      , 0.; atol= 1e-4)
 
     setinistate!(markov(m), order[3])
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.0027506; atol= 1e-4)
-    @test isapprox( UB      , 1.0027506; atol= 1e-4)
+    @test isapprox( mean(LB), 0.0027506; atol= 1e-4)
+    @test isapprox( UB      , 0.0027506; atol= 1e-4)
 
     setγ!(m, 0.1)
     setα!(m, 0.95)
@@ -112,6 +112,6 @@ using Distributions, Base.Test, CPLEX
 
     reset!(m)
     LB, UB = solve(m, m.param)
-    @test isapprox( mean(LB), 1.04428 ; atol= 1e-2)
-    @test isapprox( UB      , 1.04243 ; atol= 1e-2)
+    @test isapprox( mean(LB), 0.04428 ; atol= 1e-2)
+    @test isapprox( UB      , 0.04243 ; atol= 1e-2)
 end

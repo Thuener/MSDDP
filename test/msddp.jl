@@ -54,15 +54,15 @@ using MSDDP, Distributions, Base.Test, CPLEX
 
     LB, UB = solve(m, m.param)
     @test isapprox(std(LB), 0.01219038205727836)
-    @test isapprox(mean(LB), 1.1404031133687142)
-    @test isapprox(UB, 1.1403939524941527)
+    @test isapprox(mean(LB), 0.1404031133687142)
+    @test isapprox(UB, 0.1403939524941527)
 
     setγ!(m, 0.01)
     reset!(m)
     LB, UB = solve(m, m.param)
     @test isapprox(std(LB), 0.003095216212566487)
-    @test isapprox(mean(LB), 1.0310910343584925)
-    @test isapprox(UB, 1.0310829954147067)
+    @test isapprox(mean(LB), 0.0310910343584925)
+    @test isapprox(UB, 0.0310829954147067)
 
     info("Test with ramdom probabilities")
     μ = [0.11 0.12 0.13 0.14 0.15]'
@@ -93,6 +93,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     P_K = P_K./(sum(P_K, 2)*ones(1, K))
 
     # MSDDPModel
+    gap = 2. # just to be consistent with older results
     m = MSDDPModel(MAAParameters(α, γ, c, x_ini, x0_ini, maxvl),
         SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower),
         MKData(1, P_K, p, r);
@@ -101,8 +102,8 @@ using MSDDP, Distributions, Base.Test, CPLEX
     LB, UB = solve(m, m.param)
 
     @test isapprox(std(LB), 0.9206092247359053)
-    @test isapprox(mean(LB), 4.013608879030264)
-    @test isapprox(UB, 3.9417165715720763)
+    @test isapprox(mean(LB), 3.013608879030264)
+    @test isapprox(UB, 2.9417165715720763)
 
     # Test for a random distribution with different parameters
     info("Test for another random distribution but with different parameters")
@@ -124,6 +125,7 @@ using MSDDP, Distributions, Base.Test, CPLEX
     P_K = P_K./(sum(P_K,2)*ones(1,K))
 
     # MSDDPModel
+    gap = 2. # just to be consistent with older results
     m = MSDDPModel(MAAParameters(α, γ, c, x_ini, x0_ini, maxvl),
         SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower),
         MKData(1, P_K, p, r);
@@ -132,8 +134,8 @@ using MSDDP, Distributions, Base.Test, CPLEX
     LB, UB = solve(m, m.param)
 
     @test isapprox(std(LB), 0.5155990434976835)
-    @test isapprox(mean(LB), 3.4169015108439678)
-    @test isapprox(UB, 3.4107004891991517)
+    @test isapprox(mean(LB), 2.4169015108439678)
+    @test isapprox(UB, 2.4107004891991517)
 
     setinistate!(markov(m), 2)
     reset!(m)
@@ -141,16 +143,16 @@ using MSDDP, Distributions, Base.Test, CPLEX
 
 
     @test isapprox(std(LB), 0.5081140143986095)
-    @test isapprox(mean(LB), 3.4138193951948743)
-    @test isapprox(UB, 3.4152483430239413)
+    @test isapprox(mean(LB), 2.4138193951948743)
+    @test isapprox(UB, 2.4152483430239413)
 
     setinistate!(markov(m), 3)
     reset!(m)
     LB, UB = solve(m, m.param)
 
     @test isapprox(std(LB), 0.5070739642564517)
-    @test isapprox(mean(LB), 3.418764854446278)
-    @test isapprox(UB, 3.4120663623853877)
+    @test isapprox(mean(LB), 2.418764854446278)
+    @test isapprox(UB, 2.4120663623853877)
 
     settranscost!(m, 0.05)
     reset!(m)
