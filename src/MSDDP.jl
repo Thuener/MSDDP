@@ -79,6 +79,7 @@ type SDDPParameters
     simu_lower::Bool                # Simulate the lower bound
     fast_lower::Bool                # Use the fast evaluation of the lower bound
     file::String                    # Output JLD file
+    stabtype::Int                   # Stabilization type, (default) 0 to use diff_upper as percetage or 1 to use as absolute value
 end
 
 type ModelSizes
@@ -104,6 +105,21 @@ SDDPParameters(max_it::Int64, samplower::Int64, samplower_inc::Int64, nit_before
     diff_upper= 0.5, print_level=0, lowlevel_api=true, parallel=false, simu_lower=false, fast_lower=true, file= "" ) =
     SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, diff_upper,
         print_level, lowlevel_api, parallel, simu_lower, fast_lower, file)
+
+SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, diff_upper,
+    print_level, lowlevel_api, parallel, simu_lower, fast_lower, file) =
+    SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower, diff_upper,
+        print_level, lowlevel_api, parallel, simu_lower, fast_lower, file, 0)
+
+" Verify stabilization of the upper bound "
+function checkstab(newub::Float64, lastub::Float64, param::SDDPParameters)
+    # Uses diff_upper as diference percentage
+    param.stabtype == 0 &&
+        return abs(newub/lastub -1)*100 < param.diff_upper
+    # Uses diff_upper as absolute diference
+    param.stabtype == 1 &&
+        return abs(newub -lastub) < param.diff_upper
+end
 
 " Construct the MSDDPModel without ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
@@ -615,7 +631,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
 
             debug("obj forward = $obj_forward, upper bound = $upper, stab upper $(abs(upper/upper_last -1)*100)")
             if p.fast_lower
-                if (abs(upper/upper_last -1)*100 < p.diff_upper || upper < eps_upper || isnan(abs(upper/upper_last -1)*100))
+                if (checkstab(upper, upper_last, p) || upper < eps_upper || isnan(abs(upper/upper_last -1)*100))
                     it_stable += 1
                     if it_stable >= 5
                         if p.samplower < 30*samplower_ini
