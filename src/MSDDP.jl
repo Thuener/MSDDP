@@ -25,7 +25,10 @@ type Subproblem
     cash::Int64
     assets::Vector{Int64}
     risk::Int64
+    low::Bool # use low level api
 end
+
+Subproblem(jmodel, cash, assets, risk) = Subproblem(jmodel, cash, assets, risk, true)
 
 type Stage
     subproblems::Vector{Subproblem}
@@ -278,6 +281,7 @@ function getDual(sp::JuMP.Model, idx::Int64)
     return sp.linconstrDuals[idx]
 end
 
+# Low level functions
 function getdual_low(sp::JuMP.Model, idx::Int64)
     duals = CPLEX.get_constr_duals(sp.internalModel.inner)
     return duals[idx]
@@ -291,6 +295,33 @@ end
 function solve_low(sp::JuMP.Model)
     CPLEX.optimize!(sp.internalModel.inner)
     return CPLEX.status(sp.internalModel)
+end
+
+function getobjectivevalue_low(sp::JuMP.Model)
+    CPLEX.get_objval(sp.internalModel.inner)
+end
+
+function getvalue_low(sp::JuMP.Model, idx::Int64)
+    return CPLEX.get_solution(sp.internalModel.inner)[idx]
+end
+
+function getvalue_low(sp::JuMP.Model, ridx::UnitRange{Int64})
+    vidx = collect(ridx)
+    ret = Array(Float64,length(vidx))
+    values = CPLEX.get_solution(sp.internalModel.inner)
+    for id = 1:length(vidx)
+        ret[id] = values[vidx[id]]
+    end
+    return ret
+end
+
+function getvalue_low(sp::JuMP.Model, ridx::Array{Int64})
+    ret = Array(Float64,length(ridx))
+    values = CPLEX.get_solution(sp.internalModel.inner)
+    for id = 1:length(ridx)
+        ret[id] = values[ridx[id]]
+    end
+    return ret
 end
 
 " Evalute immediate benefit using low level Cplex api "
@@ -307,22 +338,34 @@ function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Flo
     return B_imed
 end
 
-function getobjectivevalue_low(sp::JuMP.Model)
-    CPLEX.get_objval(sp.internalModel.inner)
-end
-
-function getvalue_low(sp::JuMP.Model, idx::Int64)
-    return CPLEX.get_solution(sp.internalModel.inner)[idx]
-end
-
-function getvalue_low(sp::JuMP.Model, ridx::UnitRange{Int64})
-    vidx = collect(ridx)
-    ret = Array(Float64,length(vidx))
-    values = CPLEX.get_solution(sp.internalModel.inner)
-    for id = 1: length(vidx)
-        ret[id] = values[vidx[id]]
+function solve(sp::Subproblem)
+    if sp.low
+        return solve_low(jumpmodel(sp))
     end
-    return ret
+    return solve(jumpmodel(sp))
+end
+
+function getobjectivevalue(sp::Subproblem)
+    if sp.low
+        return getobjectivevalue_low(jumpmodel(sp))
+    end
+    return getobjectivevalue(jumpmodel(sp))
+end
+
+function getvalue(sp::Subproblem, var::Symbol)
+    if sp.low
+        vars = jumpmodel(sp)[var]
+        if typeof(vars) != JuMP.Variable
+            idxs = Array{Int64}(length(vars))
+            for i = 1:length(vars)
+                idxs[i] = vars[i].col
+            end
+        else
+            idxs = vars.col
+        end
+        return getvalue_low(jumpmodel(sp), idxs)
+    end
+    return getvalue(jumpmodel(sp), var)
 end
 
 " Add subproblem to model "
@@ -415,7 +458,7 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
             chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
         end
         # Resolve subprob in time t
-        status = solve_low(jumpmodel(sp))
+        status = solve(sp)
         if status ≠ :Optimal
             writeLP(jumpmodel(sp),"prob.lp")
             error("Can't solve the problem status:",status)
@@ -466,7 +509,7 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
                 chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
             end
 
-            status = solve_low(jumpmodel(sp))
+            status = solve(sp)
             if status ≠ :Optimal
                 writeLP(jumpmodel(sp),"prob.lp")
                 error("Can't solve the problem status:",status)
@@ -618,14 +661,14 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
 
             # Evaluate upper bound
             sp = subproblem(model, 1, inistate(markov(model)))
-            status = solve_low(jumpmodel(sp))
+            status = solve(sp)
             if status ≠ :Optimal
                 writeLP(jumpmodel(sp),"prob.lp")
                 error("Can't solve the problem status:",status)
             end
-            upper = getobjectivevalue_low(jumpmodel(sp))
-            u = getvalue_low(jumpmodel(sp), 2:nassets(model)+1)
-            u0 = getvalue_low(jumpmodel(sp), 1)
+            upper = getobjectivevalue(sp)
+            u = getvalue(sp,:u)
+            u0 = getvalue(sp,:u0)
 
             list_firstu = hcat(list_firstu,vcat(u0,u))
 
