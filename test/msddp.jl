@@ -44,10 +44,13 @@ using MSDDP, Distributions, Base.Test, CPLEX
 
     # MKData
     mk = MKData(1, P_K, p, r)
+    mk_copy = deepcopy(mk)
     # MAAParameters
     ma = MAAParameters(α, γ, c, x_ini, x0_ini, maxvl)
+    ma_copy = deepcopy(ma)
     # SDDPParameters
     sddpp = SDDPParameters(max_it, samplower, samplower_inc, nit_before_lower, gap, α_lower)
+    sddpp_copy = deepcopy(sddpp)
     # MSDDPModel
     m = MSDDPModel(ma, sddpp, mk;
                     lpsolver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2))
@@ -158,4 +161,16 @@ using MSDDP, Distributions, Base.Test, CPLEX
     reset!(m)
     LB2, UB2 = solve(m, m.param)
     @test UB2 < UB
+
+    @testset "Without low level" begin
+      gap = 1.
+      # low level api
+      m_nlow = MSDDPModel(ma_copy, sddpp_copy, mk_copy;
+                    lpsolver = CplexSolver(CPX_PARAM_SCRIND=0, CPX_PARAM_LPMETHOD=2),
+                    low = false)
+      LB, UB = solve(m_nlow, m_nlow.param)
+      @test std(LB) ≈ 0.01219038205727836 atol=1e-2
+      @test mean(LB) ≈ 0.1404031133687142 atol=1e-2
+      @test UB ≈ 0.1403939524941527 atol=1e-2
+    end
 end

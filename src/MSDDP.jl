@@ -11,7 +11,7 @@ export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate
 loadcuts!, param, sizes, markov
 export nstages, nassets, nstates, nscen, transcost, probscen
 export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, setγ!, setinistate!, settranscost!
-export chgrrhs_low!
+export chgrrhs!, getdual, getduals
 export memuse
 
 export Subproblem
@@ -27,8 +27,6 @@ type Subproblem
     risk::Int64
     low::Bool # use low level api
 end
-
-Subproblem(jmodel, cash, assets, risk) = Subproblem(jmodel, cash, assets, risk, true)
 
 type Stage
     subproblems::Vector{Subproblem}
@@ -99,6 +97,7 @@ type MSDDPModel
     param::SDDPParameters
     markov_data::MKData
     stages::Vector{Stage}
+    low::Bool
 end
 
 
@@ -124,6 +123,9 @@ function checkstab(newub::Float64, lastub::Float64, param::SDDPParameters)
         return abs(newub -lastub) < param.diff_upper
 end
 
+MSDDPModel(sizes, asset_parameters, param, markov_data, lpsolver, stages) =
+    MSDDPModel(sizes, asset_parameters, param, markov_data, lpsolver, stages, true)
+
 " Construct the MSDDPModel without ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
         param::SDDPParameters,
@@ -132,9 +134,10 @@ function MSDDPModel(asset_parameters::MAAParameters,
         nstages  = size(markov_data.ret, 1),
         nstates  = size(markov_data.transprob, 1),
         nscen    = size(markov_data.prob_scenario_state, 1),
-        lpsolver = ClpSolver())
+        lpsolver = ClpSolver(),
+        low = true )
     MSDDPModel(ModelSizes(nstages, nassets, nstates, nscen),
-        asset_parameters, param, markov_data, lpsolver)
+        asset_parameters, param, markov_data, lpsolver, true)
 end
 
 " Construct the MSDDPModel using ModelSizes "
@@ -142,12 +145,13 @@ function MSDDPModel(msize::ModelSizes,
         asset_parameters::MAAParameters,
         param::SDDPParameters,
         markov_data::MKData,
-        lpsolver::JuMP.MathProgBase.AbstractMathProgSolver)
+        lpsolver::JuMP.MathProgBase.AbstractMathProgSolver,
+        low::Bool)
     stages = Vector{Stage}(nstages(msize))
     for t = 1:nstages(msize)
         stages[t] = Stage(Vector{Subproblem}(nstates(msize)))
     end
-    m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages)
+    m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, low)
     createmodels!(m)
     m
 end
@@ -185,6 +189,7 @@ param(m::MSDDPModel)   = m.param
 sizes(m::MSDDPModel)   = m.sizes
 markov(m::MSDDPModel)  = m.markov_data
 assetspar(m::MSDDPModel)   = m.asset_parameters
+low(m::MSDDPModel)     = m.low # user or not low level API
 
 function inialloc!(m::MSDDPModel, x::AbstractVector{Float64}, rf::Float64)
     m.asset_parameters.iniassets = x
@@ -221,9 +226,9 @@ function memuse()
   return string(round(Int,parse(Int,readstring(`ps -p $pid -o rss=`))/1024),"M")
 end
 
-
+############ hight level functions ############
 " Change the RHS using the index of the constraint "
-function chgrrhs(sp::JuMP.Model, idx::Int64, rhs::Number)
+function chgrrhs_high!(sp::JuMP.Model, idx::Int64, rhs::Number)
     constr = sp.linconstr[idx]
     if constr.lb != -Inf
         if constr.ub != Inf
@@ -251,37 +256,48 @@ function chgrrhs(sp::JuMP.Model, idx::Int64, rhs::Number)
         @assert sen == :<=
         constr.ub = float(rhs)
     end
+    return nothing
 end
 
-" Set constraint RHS using the Cplex low level function "
-function setrhs_low!(cmodel::CPLEX.Model, idx::Int, rhs::Number)
-    ncons = 1
-    stat = ccall(("CPXchgrhs",CPLEX.libcplex), Cint, (
-                    Ptr{Void},
-                    Ptr{Void},
-                    Cint,
-                    Ptr{Cint},
-                    Ptr{Cdouble}
-                    ),
-                    cmodel.env.ptr, cmodel.lp, ncons, Cint[idx-1;], float([rhs]))
-    if stat != 0
-        throw(CplexError(cmodel.env, stat))
-    end
-end
-
-" Change constraint RHS using the Cplex low level function "
-function chgrrhs_low!(sp::JuMP.Model, idx::Int64, rhs::Number)
-    setrhs_low!(sp.internalModel.inner, idx, rhs)
-end
-
-function getDual(sp::JuMP.Model, idx::Int64)
+function getdual_high(sp::JuMP.Model, idx::Int64)
     if length(sp.linconstrDuals) != MathProgBase.numlinconstr(sp)
         error("Dual solution not available. Check that the model was properly solved and no integer variables are present.")
     end
     return sp.linconstrDuals[idx]
 end
 
-# Low level functions
+function getduals_high(sp::JuMP.Model, ids::Vector{Int})
+    if length(sp.linconstrDuals) != MathProgBase.numlinconstr(sp)
+        error("Dual solution not available. Check that the model was properly solved and no integer variables are present.")
+    end
+    return sp.linconstrDuals[idx]
+end
+
+function immediatebenefit_high(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
+    b = getvariable(sp,:b)
+    d = getvariable(sp,:d)
+    u = getvariable(sp,:u)
+    stateprob = transprob(markov(model), state)
+    @expression(sp, B_imed, - transcost(model)*sum(b[i] + d[i] for i = 1:nassets(model)) +
+             sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(model)) )*stateprob[k]*probscen(markov(model), s, k)
+             for k = 1:nstates(model), s = 1:nscen(model)))
+    return JuMP.getvalue(B_imed)
+end
+
+function addcut_high!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+    jsp = jumpmodel(subproblem(model, stage-1, state))
+    θ = getindex(jsp,:θ)
+    u = getindex(jsp,:u)
+    u0 = getindex(jsp,:u0)
+
+    @constraint(jsp, [j = 1:nstates(model), s = 1:nscen(model)],
+    θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*
+        (1+returns(markov(model),stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
+    return nothing
+end
+
+
+############ Low level functions ############
 function getdual_low(sp::JuMP.Model, idx::Int64)
     duals = CPLEX.get_constr_duals(sp.internalModel.inner)
     return duals[idx]
@@ -324,6 +340,24 @@ function getvalue_low(sp::JuMP.Model, ridx::Array{Int64})
     return ret
 end
 
+" Change constraint RHS using the Cplex low level function "
+function chgrrhs_low!(sp::JuMP.Model, idx::Int, rhs::Number)
+    cmodel = sp.internalModel.inner
+    ncons = 1
+    stat = ccall(("CPXchgrhs",CPLEX.libcplex), Cint, (
+                    Ptr{Void},
+                    Ptr{Void},
+                    Cint,
+                    Ptr{Cint},
+                    Ptr{Cdouble}
+                    ),
+                    cmodel.env.ptr, cmodel.lp, ncons, Cint[idx-1;], float([rhs]))
+    if stat != 0
+        throw(CplexError(cmodel.env, stat))
+    end
+    return nothing
+end
+
 " Evalute immediate benefit using low level Cplex api "
 function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
 
@@ -338,18 +372,59 @@ function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Flo
     return B_imed
 end
 
+function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+    jsp = jumpmodel(subproblem(model, stage-1, state))
+    nvariables = CPLEX.num_var(jsp.internalModel.inner)
+    u0_id = 1
+    u_ids = collect(2:nassets(model)+1)
+
+    coef = zeros(Float64, nstates(model)*nscen(model), nvariables)
+    rhs = zeros(Float64, nstates(model)*nscen(model))
+    ind_ini = nvariables - nstates(model)*nscen(model)
+
+    for j = 1:nstates(model), s = 1:nscen(model)
+        ind_const = s + (j-1)*nscen(model)
+        ind_θ = ind_ini + ind_const
+
+        coef[ind_const, ind_θ] = 1
+        coef[ind_const, u0_id] = -β[1,stage,j]
+        for i = 1:nassets(model)
+            coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(markov(model),stage+1,i,j,s))
+        end
+        rhs[ind_const] = α[stage,j]
+    end
+    CPLEX.add_constrs!(jsp.internalModel.inner, coef, '<', rhs)
+    return nothing
+end
+
+############ Functions to choose between low level api or high ############
+
+function getdual(sp::Subproblem, idx::Int64)
+    if sp.low
+        return getdual_low(jumpmodel(sp), idx)
+    end
+    return getdual_high(jumpmodel(sp), idx)
+end
+
+function getduals(sp::Subproblem, idxs::Array{Int64})
+    if sp.low
+        return getduals_low(jumpmodel(sp), idxs)
+    end
+    return getduals_high(jumpmodel(sp), idxs)
+end
+
 function solve(sp::Subproblem)
     if sp.low
         return solve_low(jumpmodel(sp))
     end
-    return solve(jumpmodel(sp))
+    return JuMP.solve(jumpmodel(sp))
 end
 
 function getobjectivevalue(sp::Subproblem)
     if sp.low
         return getobjectivevalue_low(jumpmodel(sp))
     end
-    return getobjectivevalue(jumpmodel(sp))
+    return JuMP.getobjectivevalue(jumpmodel(sp))
 end
 
 function getvalue(sp::Subproblem, var::Symbol)
@@ -365,7 +440,28 @@ function getvalue(sp::Subproblem, var::Symbol)
         end
         return getvalue_low(jumpmodel(sp), idxs)
     end
-    return getvalue(jumpmodel(sp), var)
+    return JuMP.getvalue(jumpmodel(sp)[var])
+end
+
+function chgrrhs!(sp::Subproblem, idx::Int, rhs::Number)
+    if sp.low
+        return chgrrhs_low!(jumpmodel(sp), idx, rhs)
+    end
+    return chgrrhs_high!(jumpmodel(sp), idx, rhs)
+end
+
+function immediatebenefit(model, sp::Subproblem, state, rets::Array{Float64,3})
+    if sp.low
+        return immediatebenefit_low(model, jumpmodel(sp), state, rets)
+    end
+    return immediatebenefit_high(model, jumpmodel(sp), state, rets)
+end
+
+function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+    if low(model)
+        return addcut_low!(model, α, β, stage, state)
+    end
+    return addcut_high!(model, α, β, stage, state)
 end
 
 " Add subproblem to model "
@@ -406,7 +502,7 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
         writeLP(jumpmodel(sp),"prob.lp")
         error("Can't solve the problem status:",status)
     end
-    m.stages[stage].subproblems[state] = Subproblem(jmodel, cash, assets, risk)
+    m.stages[stage].subproblems[state] = Subproblem(jmodel, cash, assets, risk, low(m))
 end
 
 function createmodels!(model)
@@ -432,7 +528,7 @@ function simulatestates(sz::ModelSizes, mk::MKData, states_forward::Vector{Int64
 
     # Simulationg forward scenarios
     rand_idx = rand(Categorical(probscen(mk)[1:nscen(sz),states_forward[t]]))
-    rets_forward[1:nassets(sz),t] = returns(mk)[t,1:nassets(sz),states_forward[t],rand_idx];
+    rets_forward[1:nassets(sz),t] = returns(mk)[t,1:nassets(sz),states_forward[t],rand_idx]
   end
 end
 
@@ -452,10 +548,10 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
         k = states[t]
         sp = subproblem(m, t, k)
 
-        chgrrhs_low!(jumpmodel(sp), sp.cash, x0_trial[t])
-        chgrrhs_low!(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+        chgrrhs!(sp, sp.cash, x0_trial[t])
+        chgrrhs!(sp, sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
         for i = 1:nassets(m)
-            chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
+            chgrrhs!(sp, sp.assets[i], x_trial[i,t])
         end
         # Resolve subprob in time t
         status = solve(sp)
@@ -464,27 +560,24 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
             error("Can't solve the problem status:",status)
         end
         # Evalute immediate benefit
-        obj_forward += immediatebenefit_low(m, jumpmodel(sp), states[t], returns(markov(m),t+1))
+        obj_forward += immediatebenefit(m, sp, states[t], returns(markov(m),t+1))
 
         # Update trials
-        id_u0 = 1
+        u_val = getvalue(sp, :u)
         for i = 1:nassets(m)
-            u_val = getvalue_low(jumpmodel(sp), i+id_u0)
-            u_trial[i+1,t] = u_val
-            x_trial[i,t+1] = (1+rets[i,t+1])*u_val
+            u_trial[i+1,t] = u_val[i]
+            x_trial[i,t+1] = (1+rets[i,t+1])*u_val[i]
         end
-        u_trial[1,t] = getvalue_low(jumpmodel(sp), 1)
+        u_trial[1,t] = getvalue(sp, :u0)
 
         # If transactional cost is different from the optimization model
         if real_transcost != 0.0
             error("Adjust the issue first")
-            b = getindex(jumpmodel(sp),:b)
-            d = getindex(jumpmodel(sp),:d)
-            b_v = getvalue(b)
-            d_v = getvalue(d)
+            b_v = getvalue(sp, :b)
+            d_v = getvalue(sp, :d)
             x0_trial[t+1] = - sum((1.0+real_transcost)*b_v) + sum((1.0-real_transcost)*d_v) + x0_trial[t]
         else
-            x0_trial[t+1] = getvalue_low(jumpmodel(sp), 1)
+            x0_trial[t+1] = getvalue(sp, :u0)
         end
     end
 
@@ -503,10 +596,10 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
         for j = 1:nstates(m)
             sp = subproblem(m, t, j)
 
-            chgrrhs_low!(jumpmodel(sp), sp.cash, x0_trial[t])
-            chgrrhs_low!(jumpmodel(sp), sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+            chgrrhs!(sp, sp.cash, x0_trial[t])
+            chgrrhs!(sp, sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
             for i = 1:nassets(m)
-                chgrrhs_low!(jumpmodel(sp), sp.assets[i], x_trial[i,t])
+                chgrrhs!(sp, sp.assets[i], x_trial[i,t])
             end
 
             status = solve(sp)
@@ -516,19 +609,19 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
             end
 
             # Evalute custs
-            λ0 = getdual_low(jumpmodel(sp), sp.cash)
+            λ0 = getdual(sp, sp.cash)
             λ = zeros(nassets(m))
             for i = 1:nassets(m)
-                λ[i] = getdual_low(jumpmodel(sp), sp.assets[i])
+                λ[i] = getdual(sp, sp.assets[i])
             end
-            π = getdual_low(jumpmodel(sp), sp.risk)
-            obj = getobjectivevalue_low(jumpmodel(sp))
+            π = getdual(sp, sp.risk)
+            obj = getobjectivevalue(sp)
             α[t,j] =  obj - (λ0 + ap.γ*π)*x0_trial[t] - sum([(λ[i] + ap.γ*π)*x_trial[i,t] for i = 1:nassets(m)])
             β[:,t,j] = vcat(λ0, λ) + ap.γ*π
         end
 
         for k = 1:nstates(m)
-            addcut_low!(m, α, β, t, k)
+            addcut!(m, α, β, t, k)
         end
     end
 
@@ -568,47 +661,12 @@ function loadcuts!(model, file::String)
             for t = 1:nstages-1
                 if t != 1
                     for k = 1:nstates
-                        addcut_low!(msddp(model), α, β, t, k)
+                        addcut!(msddp(model), α, β, t, k)
                     end
                 end
             end
         end
     end
-end
-
-function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
-    jsp = jumpmodel(subproblem(model, stage-1, state))
-    nvariables = CPLEX.num_var(jsp.internalModel.inner)
-    u0_id = 1
-    u_ids = collect(2:nassets(model)+1)
-
-    coef = zeros(Float64, nstates(model)*nscen(model), nvariables)
-    rhs = zeros(Float64, nstates(model)*nscen(model))
-    ind_ini = nvariables - nstates(model)*nscen(model)
-
-    for j = 1:nstates(model), s = 1:nscen(model)
-        ind_const = s + (j-1)*nscen(model)
-        ind_θ = ind_ini + ind_const
-
-        coef[ind_const, ind_θ] = 1
-        coef[ind_const, u0_id] = -β[1,stage,j]
-        for i = 1:nassets(model)
-            coef[ind_const, u_ids[i]] = -β[i+1,stage,j]*(1+returns(markov(model),stage+1,i,j,s))
-        end
-        rhs[ind_const] = α[stage,j]
-    end
-    CPLEX.add_constrs!(jsp.internalModel.inner, coef, '<', rhs)
-end
-
-function addcut!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
-    jsp = jumpmodel(subproblem(model, stage-1, state))
-    θ = getindex(jsp,:θ)
-    u = getindex(jsp,:u)
-    u0 = getindex(jsp,:u0)
-
-    @constraint(jsp, [j = 1:nstates(model), s = 1:nscen(model)],
-    θ[j,s] <= α[stage,j] + β[1,stage,j]*u0 + sum(β[i+1,stage,j]*
-        (1+returns(markov(model),stage+1,i,j,s))*u[i] for i = 1:nassets(model)))
 end
 
 function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
