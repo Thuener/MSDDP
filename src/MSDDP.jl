@@ -137,7 +137,7 @@ function MSDDPModel(asset_parameters::MAAParameters,
         lpsolver = ClpSolver(),
         low = true )
     MSDDPModel(ModelSizes(nstages, nassets, nstates, nscen),
-        asset_parameters, param, markov_data, lpsolver, true)
+        asset_parameters, param, markov_data, lpsolver, low)
 end
 
 " Construct the MSDDPModel using ModelSizes "
@@ -266,7 +266,7 @@ function getdual_high(sp::JuMP.Model, idx::Int64)
     return sp.linconstrDuals[idx]
 end
 
-function getduals_high(sp::JuMP.Model, ids::Vector{Int})
+function getduals_high(sp::JuMP.Model, idx::Vector{Int})
     if length(sp.linconstrDuals) != MathProgBase.numlinconstr(sp)
         error("Dual solution not available. Check that the model was properly solved and no integer variables are present.")
     end
