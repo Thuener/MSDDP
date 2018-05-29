@@ -14,22 +14,32 @@ export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, set
 export chgrrhs!, getdual, getduals
 export memuse
 
-export Subproblem
+export Subproblem, State
+export AbstractMSDDPModel, AbstractSubproblem, AbstractState
+
+abstract type AbstractMSDDPModel end
+abstract type AbstractSubproblem end
+abstract type AbstractState end
 
 
 ## Types ##
+type State <: AbstractState
+    x_trial::Array{Float64,2}
+    x0_trial::Array{Float64,1}
+end
 
-type Subproblem
+risk_alloc(st::State) = st.x_trial
+rf_alloc(st::State)   = st.x0_trial
+
+type Subproblem <: AbstractSubproblem
     jmodel::JuMP.Model
     # Ids for the constraints
-    cash::Int64
-    assets::Vector{Int64}
-    risk::Int64
+    cons::Vector{Int64}
     low::Bool # use low level api
 end
 
 type Stage
-    subproblems::Vector{Subproblem}
+    subproblems::Vector{AbstractSubproblem}
 end
 
 " Markov Chain data "
@@ -89,7 +99,7 @@ type ModelSizes
     nscen::Int64
 end
 
-type MSDDPModel
+type MSDDPModel <: AbstractMSDDPModel
     sizes::ModelSizes
     lpsolver::JuMP.MathProgBase.AbstractMathProgSolver
     asset_parameters::MAAParameters
@@ -148,7 +158,7 @@ function MSDDPModel(msize::ModelSizes,
         low::Bool)
     stages = Vector{Stage}(nstages(msize))
     for t = 1:nstages(msize)
-        stages[t] = Stage(Vector{Subproblem}(nstates(msize)))
+        stages[t] = Stage(Vector{AbstractSubproblem}(nstates(msize)))
     end
     m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, low)
     createmodels!(m)
@@ -159,7 +169,7 @@ end
 function reset!(m::MSDDPModel)
     stages = Vector{Stage}(nstages(m))
     for t = 1:nstages(m)
-        stages[t] = Stage(Vector{Subproblem}(nstates(m)))
+        stages[t] = Stage(Vector{AbstractSubproblem}(nstates(m)))
     end
     m.stages = stages
     createmodels!(m)
@@ -272,7 +282,7 @@ function getduals_high(sp::JuMP.Model, idx::Vector{Int})
     return sp.linconstrDuals[idx]
 end
 
-function immediatebenefit_high(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
+function immediatebenefit_high(model::AbstractMSDDPModel, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
     b = getindex(sp,:b)
     d = getindex(sp,:d)
     u = getindex(sp,:u)
@@ -283,7 +293,7 @@ function immediatebenefit_high(model, sp::JuMP.Model, state::Int, rets::Array{Fl
     return JuMP.getvalue(B_imed)
 end
 
-function addcut_high!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+function addcut_high!(model::AbstractMSDDPModel, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
     jsp = jumpmodel(subproblem(model, stage-1, state))
     θ = getindex(jsp,:θ)
     u = getindex(jsp,:u)
@@ -358,7 +368,7 @@ function chgrrhs_low!(sp::JuMP.Model, idx::Int, rhs::Number)
 end
 
 " Evalute immediate benefit using low level Cplex api "
-function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
+function immediatebenefit_low(model::AbstractMSDDPModel, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
 
     u = getvalue_low(sp, 2:nassets(model)+1)
     b = getvalue_low(sp, 2+nassets(model):2*nassets(model)+1)
@@ -371,7 +381,7 @@ function immediatebenefit_low(model, sp::JuMP.Model, state::Int, rets::Array{Flo
     return B_imed
 end
 
-function addcut_low!(model, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
+function addcut_low!(model::AbstractMSDDPModel, α::Array{Float64,2}, β::Array{Float64,3}, stage::Int, state::Int)
     jsp = jumpmodel(subproblem(model, stage-1, state))
     nvariables = CPLEX.num_var(jsp.internalModel.inner)
     u0_id = 1
@@ -501,10 +511,10 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
         writeLP(jumpmodel(sp),"prob.lp")
         error("Can't solve the problem status:",status)
     end
-    m.stages[stage].subproblems[state] = Subproblem(jmodel, cash, assets, risk, low(m))
+    m.stages[stage].subproblems[state] = Subproblem(jmodel, [cash; risk; assets], low(m))
 end
 
-function createmodels!(model)
+function createmodels!(model::AbstractMSDDPModel)
     for t = 1:nstages(model)-1
         for j = 1:nstates(model)
             createmodel!(model, t, j)
@@ -512,7 +522,7 @@ function createmodels!(model)
     end
 end
 
-function simulatestates(model, states_forward::Vector{Int64}, rets_forward::Array{Float64,2})
+function simulatestates(model::AbstractMSDDPModel, states_forward::Vector{Int64}, rets_forward::Array{Float64,2})
     simulatestates(sizes(model), markov(model), states_forward, rets_forward)
 end
 
@@ -531,7 +541,7 @@ function simulatestates(sz::ModelSizes, mk::MKData, states_forward::Vector{Int64
   end
 end
 
-function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
+function forward!(model::AbstractMSDDPModel, states::Vector{Int64}, rets::Array{Float64,2};
         nstag = nstages(msddp(model)), real_transcost=0.0)
     m = msddp(model)
 
@@ -547,10 +557,10 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
         k = states[t]
         sp = subproblem(m, t, k)
 
-        chgrrhs!(sp, sp.cash, x0_trial[t])
-        chgrrhs!(sp, sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+        chgrrhs!(sp, sp.cons[1], x0_trial[t])
+        chgrrhs!(sp, sp.cons[2], ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
         for i = 1:nassets(m)
-            chgrrhs!(sp, sp.assets[i], x_trial[i,t])
+            chgrrhs!(sp, sp.cons[i+2], x_trial[i,t])
         end
         # Resolve subprob in time t
         status = solve(sp)
@@ -580,10 +590,13 @@ function forward!(model, states::Vector{Int64}, rets::Array{Float64,2};
         end
     end
 
-    return x_trial, x0_trial, obj_forward, u_trial
+    return State(x_trial, x0_trial), obj_forward, u_trial
 end
 
-function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, cutsfile::String)
+function backward!(model::AbstractMSDDPModel, state::State, cutsfile::String)
+    x_trial = risk_alloc(state)
+    x0_trial = rf_alloc(state)
+
     m = msddp(model)
     # Initialize
     α = ones(nstages(m)-1,nstates(m))
@@ -595,10 +608,10 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
         for j = 1:nstates(m)
             sp = subproblem(m, t, j)
 
-            chgrrhs!(sp, sp.cash, x0_trial[t])
-            chgrrhs!(sp, sp.risk, ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+            chgrrhs!(sp, sp.cons[1], x0_trial[t])
+            chgrrhs!(sp, sp.cons[2], ap.γ*(sum(x_trial[:,t])+x0_trial[t]) )
             for i = 1:nassets(m)
-                chgrrhs!(sp, sp.assets[i], x_trial[i,t])
+                chgrrhs!(sp, sp.cons[i+2], x_trial[i,t])
             end
 
             status = solve(sp)
@@ -608,12 +621,12 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
             end
 
             # Evalute custs
-            λ0 = getdual(sp, sp.cash)
+            λ0 = getdual(sp, sp.cons[1])
             λ = zeros(nassets(m))
             for i = 1:nassets(m)
-                λ[i] = getdual(sp, sp.assets[i])
+                λ[i] = getdual(sp, sp.cons[i+2])
             end
-            π = getdual(sp, sp.risk)
+            π = getdual(sp, sp.cons[2])
             obj = getobjectivevalue(sp)
             α[t,j] =  obj - (λ0 + ap.γ*π)*x0_trial[t] - sum([(λ[i] + ap.γ*π)*x_trial[i,t] for i = 1:nassets(m)])
             β[:,t,j] = vcat(λ0, λ) + ap.γ*π
@@ -635,7 +648,7 @@ function backward!(model, x_trial::Array{Float64,2}, x0_trial::Vector{Float64}, 
 end
 
 " Load cuts into the model "
-function loadcuts!(model, file::String)
+function loadcuts!(model::AbstractMSDDPModel, file::String)
     open(file,"r") do f
         while true
             line = readline(f)
@@ -668,15 +681,14 @@ function loadcuts!(model, file::String)
     end
 end
 
-function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
+function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
     # Delete cutsfile file
     if cutsfile != ""
         rm(cutsfile; force=true)
     end
     sd = param(model)
     ap = assetspar(model)
-    x_trial = []
-    x0_trial = []
+    state = []
     u_trial = []
     rets_forward = zeros(Float64, nassets(model), nstages(model))
     states_forward = Array{Int64}( nstages(model))
@@ -709,11 +721,11 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
             # Forward
             debug("Forward Step memuse $(memuse())")
             simulatestates(model, states_forward, rets_forward)
-            x_trial, x0_trial, obj_forward, u_trial = forward!(model, states_forward, rets_forward)
+            state, obj_forward, u_trial = forward!(model, states_forward, rets_forward)
 
             # Backward
             debug("Backward Step memuse $(memuse())")
-            backward!(model, x_trial, x0_trial, cutsfile)
+            backward!(model, state, cutsfile)
 
 
             # Evaluate upper bound
@@ -766,7 +778,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
         doub_samplower = false
         for forwards_lower = 1:p.samplower
             simulatestates(model, states_forward, rets_forward)
-            x_trial, x0_trial, obj_forward, u_trial = forward!(model, states_forward, rets_forward)
+            state, obj_forward, u_trial = forward!(model, states_forward, rets_forward)
             lower[forwards_lower] = obj_forward
             sumlower += obj_forward
 
@@ -814,7 +826,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
         end
         if p.file != ""
             save(string(p.file,"_MSDDP.jld"),"lower", lower[1:forwards_lower],"upper", upper,"lower_c", lower_conserv,"x",
-            vcat(x0_trial',x_trial), "u", u_trial, "l_lower", list_lowers, "l_upper", list_uppers,
+            vcat(rf_alloc(state)',risk_alloc(state)), "u", u_trial, "l_lower", list_lowers, "l_upper", list_uppers,
             "l_firsu",list_firstu)
         end
         if !p.fast_lower # Evaluate the lower bound always using samples for lower bound forwards
@@ -848,18 +860,18 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
         write(file,"MKData",model.markov_data)
         for forwards_lower = 1:3
             simulatestates(model, states_forward_o, rets_forward_o)
-            x_trial_o, x0_trial_o, obj_forward_o, u_trial_o = forward!(model, states_forward_o, rets_forward_o; parallel=p.parallel)
-            write(file, "x$forwards_lower", vcat(x0_trial_o',x_trial_o))
+            state_o, obj_forward_o, u_trial_o = forward!(model, states_forward_o, rets_forward_o; parallel=p.parallel)
+            write(file, "x$forwards_lower", vcat(rf_alloc(state_o)',risk_alloc(state)))
             write(file, "u$forwards_lower", u_trial_o)
             write(file, "K$forwards_lower", states_forward_o)
         end
     end
     p.samplower = samplower_ini
-    x_trial_  = forwards_lower != 0 ? vcat(x0_trial',x_trial) : x0_trial'
+    x_trial_  = forwards_lower != 0 ? vcat(rf_alloc(state)',risk_alloc(state)) : rf_alloc(state)'
     return lower[1:forwards_lower], upper, lower_conserv, x_trial_, u_trial, list_lowers, list_uppers, list_firstu
 end
 
-function simulate_stateprob(model, rets::Array{Float64,2}, probret_state::Array{Float64,2}; real_transcost=0.0)
+function simulate_stateprob(model::AbstractMSDDPModel, rets::Array{Float64,2}, probret_state::Array{Float64,2}; real_transcost=0.0)
 
    states = Array{Int64}(nstages(model)-1)
    for t = 1:nstages(model)-1
@@ -869,18 +881,18 @@ function simulate_stateprob(model, rets::Array{Float64,2}, probret_state::Array{
    return simulate(model, rets, states, real_transcost=real_transcost)
 end
 
-function simulate(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
+function simulate(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
   samps = size(rets,2)
   if samps != nstages(model)
     error("Return series has to have $(nstages(model)) and has $(nsamp) samples, use simulatesw if you want to really do that.")
   end
-  x, x0, exp_ret, u = MSDDP.forward!(model, states, rets, real_transcost=real_transcost)
+  state, exp_ret, u = MSDDP.forward!(model, states, rets, real_transcost=real_transcost)
 
-  return x, x0, exp_ret
+  return risk_alloc(state), rf_alloc(state), exp_ret
 end
 
 # Simulate using sliding windows
-function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
+function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
    mcopy = deepcopy(model)
    stages_test = size(rets,2)
    nstag = nstages(model)
@@ -891,10 +903,10 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
      rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
      states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
-     x, x0, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
-     all_x = hcat(all_x, x[:,2:end])
-     all_x0 = vcat(all_x0, x0[2:end])
-     inialloc!(mcopy, x[:,end], x0[end])
+     state, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
+     all_x = hcat(all_x, risk_alloc(state)[:,2:end])
+     all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
+     inialloc!(mcopy, risk_alloc(state)[:,end], rf_alloc(state)[end])
    end
 
    # Simulate last periods
@@ -903,15 +915,15 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
      states_forward_a = Array{Int64}(diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
-     x, x0, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
-     all_x = hcat(all_x, x[:,2:end])
-     all_x0 = vcat(all_x0, x0[2:end])
+     state, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
+     all_x = hcat(all_x, risk_alloc(state)[:,2:end])
+     all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
    end
 
    return all_x, all_x0
  end
 
-function simulate_percport(model, rets::Array{Float64,2}, x_p::Array{Float64,1})
+function simulate_percport(model::AbstractMSDDPModel, rets::Array{Float64,2}, x_p::Array{Float64,1})
    stages_test = size(rets,2)
    x = Array{Float64}(nassets(model)+1, stages_test)
    x[:,1] = inialloc(model)
