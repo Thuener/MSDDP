@@ -49,7 +49,7 @@ using Base.Test, CPLEX
     rm("cuts.csv")
 
     k_test = predict(hmm, ret_test)
-    ret_test = exp(ret_test)-1
+    ret_test = exp.(ret_test)-1
     x, x0 = simulatesw(m, ret_test', k_test)
     # With one state has to invest everything on the asset with the best profit (second asset)
     @test isapprox( sum(x0[2:end]), 0; atol= 1e-6)

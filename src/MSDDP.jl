@@ -43,7 +43,6 @@ end
 #  Utils for MKData
 inistate(mkd::MKData)              = mkd.inistate
 transprob(mkd::MKData)             = mkd.transprob
-transprob(mkd::MKData)             = mkd.transprob
 transprob(mkd::MKData, state::Int) = transprob(mkd)[state,:]
 probscen(mkd::MKData)              = mkd.prob_scenario_state
 probscen(mkd::MKData, scen::Int, state::Int) = probscen(mkd)[scen, state]
@@ -153,7 +152,7 @@ function MSDDPModel(msize::ModelSizes,
     end
     m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, low)
     createmodels!(m)
-    m
+    return m
 end
 
 " Reset the stages vector inside MSDDPModel and create models"
@@ -274,9 +273,9 @@ function getduals_high(sp::JuMP.Model, idx::Vector{Int})
 end
 
 function immediatebenefit_high(model, sp::JuMP.Model, state::Int, rets::Array{Float64,3})
-    b = getvariable(sp,:b)
-    d = getvariable(sp,:d)
-    u = getvariable(sp,:u)
+    b = getindex(sp,:b)
+    d = getindex(sp,:d)
+    u = getindex(sp,:u)
     stateprob = transprob(markov(model), state)
     @expression(sp, B_imed, - transcost(model)*sum(b[i] + d[i] for i = 1:nassets(model)) +
              sum((sum(rets[i,k,s]*u[i] for i = 1:nassets(model)) )*stateprob[k]*probscen(markov(model), s, k)
@@ -323,7 +322,7 @@ end
 
 function getvalue_low(sp::JuMP.Model, ridx::UnitRange{Int64})
     vidx = collect(ridx)
-    ret = Array(Float64,length(vidx))
+    ret = Array{Float64}(length(vidx))
     values = CPLEX.get_solution(sp.internalModel.inner)
     for id = 1:length(vidx)
         ret[id] = values[vidx[id]]
@@ -332,7 +331,7 @@ function getvalue_low(sp::JuMP.Model, ridx::UnitRange{Int64})
 end
 
 function getvalue_low(sp::JuMP.Model, ridx::Array{Int64})
-    ret = Array(Float64,length(ridx))
+    ret = Array{Float64}(length(ridx))
     values = CPLEX.get_solution(sp.internalModel.inner)
     for id = 1:length(ridx)
         ret[id] = values[ridx[id]]
@@ -484,7 +483,7 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
         for k = 1:nstates(m), s = 1:nscen(m)))
 
     cash = @constraint(jmodel, u0 + sum((1+transcost(m))*b[i] - (1-transcost(m))*d[i] for i = 1:nassets(m)) == inirf(m)).idx
-    assets = Array(Int64,nassets(m))
+    assets = Array{Int64}(nassets(m))
     for i = 1:nassets(m)
         assets[i] = @constraint(jmodel, u[i] - b[i] + d[i] == iniassets(m, i)).idx
     end
@@ -645,8 +644,8 @@ function loadcuts!(model, file::String)
             nassets_p1 = parse(Int, items[1])
             nstages = parse(Int, items[2])
             nstates = parse(Int, items[3])
-            α = Array(Float64, nstages-1, nstates)
-            β = Array(Float64, nassets_p1, nstages-1, nstates)
+            α = Array{Float64}( nstages-1, nstates)
+            β = Array{Float64}( nassets_p1, nstages-1, nstates)
             for t = 1:nstages-1
                 line = readline(f)
                 items = split(line, ",")
@@ -680,7 +679,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
     x0_trial = []
     u_trial = []
     rets_forward = zeros(Float64, nassets(model), nstages(model))
-    states_forward = Array(Int64, nstages(model))
+    states_forward = Array{Int64}( nstages(model))
 
     quantil = quantile(Normal(),sd.α_lower)
 
@@ -692,9 +691,9 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
     list_uppers = [-1000]
     list_lowers = [-1000 -1000]
     if p.parallel
-        lower = SharedArray(Float64, p.samplower)
+        lower = SharedArray{Float64}( p.samplower)
     else
-        lower = Array(Float64, p.samplower)
+        lower = Array{Float64}( p.samplower)
     end
     upper          = 9999999.0
     it_stable      = 0
@@ -739,9 +738,9 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
                             p.samplower = round(Int64,p.samplower + p.samplower_inc)
                             info("Stable upper bound, increasing samples for lower bound for $(p.samplower)")
                             if p.parallel
-                                lower = SharedArray(Float64,p.samplower)
+                                lower = SharedArray{Float64}(p.samplower)
                             else
-                                lower = Array(Float64,p.samplower)
+                                lower = Array{Float64}(p.samplower)
                             end
                         end
                         break
@@ -750,9 +749,9 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
                     it_stable = 0
                     p.samplower = samplower_ini
                     if p.parallel
-                        lower = SharedArray(Float64,p.samplower)
+                        lower = SharedArray{Float64}(p.samplower)
                     else
-                        lower = Array(Float64,p.samplower)
+                        lower = Array{Float64}(p.samplower)
                     end
                 end
             end
@@ -789,9 +788,9 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
                         p.samplower = round(Int64,p.samplower + p.samplower_inc)
                         info("gap_mean < p.gap increasing samples for lower bound for $(p.samplower)")
                         if p.parallel
-                            lower = vcat(lower,SharedArray(Float64,p.samplower_inc))
+                            lower = vcat(lower,SharedArray{Float64}(p.samplower_inc))
                         else
-                            lower = vcat(lower,Array(Float64,p.samplower))
+                            lower = vcat(lower,Array{Float64}(p.samplower))
                         end
                     end
                 end
@@ -842,7 +841,7 @@ function solve(model, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
     if p.simu_lower
         file = jldopen("./output/allo_data_G$(string(ap.γ)[3:end])_C$(string(transcost(model))[3:end]).jld", "w")
         debug("Evaluating the Lower bound")
-        states_forward_o = Array(Int64,nstages(model))
+        states_forward_o = Array{Int64}(nstages(model))
         rets_forward_o = zeros(nassets(model),nstages(model))
         addrequire(file, MSDDP)
         write(file,"SDDPParameters",param(model))
@@ -862,7 +861,7 @@ end
 
 function simulate_stateprob(model, rets::Array{Float64,2}, probret_state::Array{Float64,2}; real_transcost=0.0)
 
-   states = Array(Int64,nstages(model)-1)
+   states = Array{Int64}(nstages(model)-1)
    for t = 1:nstages(model)-1
      states[t] = findmax(probret_state[:,t])[2]
    end
@@ -901,7 +900,7 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
    # Simulate last periods
    diff_t = round(Int, stages_test-1 - (its*(nstages(mcopy)-1)))
    if diff_t > 0
-     states_forward_a = Array(Int64,diff_t)
+     states_forward_a = Array{Int64}(diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
      x, x0, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
@@ -914,7 +913,7 @@ function simulatesw(model, rets::Array{Float64,2}, states::Array{Int64,1}; real_
 
 function simulate_percport(model, rets::Array{Float64,2}, x_p::Array{Float64,1})
    stages_test = size(rets,2)
-   x = Array(Float64,nassets(model)+1, stages_test)
+   x = Array{Float64}(nassets(model)+1, stages_test)
    x[:,1] = inialloc(model)
    cost = 0.0
    for t = 2:stages_test

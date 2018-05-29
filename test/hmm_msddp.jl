@@ -63,7 +63,7 @@ using HMM_MSDDP, MSDDP
 
     mk, hmm = inithmm(ms, ret', nperiods, samples)
 
-    order = Array(Int64, K)
+    order = Array{Int64}(K)
     found = true
     for k = 1:K
     if abs(mean(reshape(mk.ret[6,1,k,:], S)) - 0.008395323) < 1e-4

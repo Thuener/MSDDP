@@ -20,9 +20,9 @@ export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate
 
 function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
 			μ::Array{Float64,1}, σ::Array{Float64,1}; cov_type="full",init_p="")
-	μ_ = Array(Float64,n_states,1)
+	μ_ = Array{Float64}(n_states,1)
 	μ_[:,:] = μ[1:n_states,:]
-	σ_ = Array(Float64,n_states,1,1)
+	σ_ = Array{Float64}(n_states,1,1)
 	σ_[:,:,:] = σ[1:n_states,:,:]
 	debug("Before")
 	debug("μ_ ",μ_)
@@ -55,8 +55,9 @@ function train_hmm{N}(data::Array{Float64,N}, n_states::Int64; cov_type="full",i
     model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
   else
     model = hl_hmm.GaussianHMM(n_components=n_states)
+	data = (data')'  # Has to be Array{Float64,2}
   end
-	model[:fit]((data')') # Has to be Array{Float64,2}
+	model[:fit](data)
 	debug("After")
  	debug("μ ", model[:means_])
  	debug("σ ", model[:covars_])
@@ -82,7 +83,7 @@ function predict(model, data::Array{Float64,1})
 end
 function predict(model, data::Array{Float64,2})
 	samples = size(data,1)
-	states = Array(Int64,samples)
+	states = Array{Int64}(samples)
 	for i = 1:samples
 		states[i] = (model[:predict](data[1:i,:]) .+1)[end]
 	end
@@ -97,7 +98,7 @@ end
 """ Predict function using slide windows """
 function predictsw(model, data::Array{Float64,2}, window::Int64)
 	samples = size(data,1)
-	states = Array(Int64,samples-window+1)
+	states = Array{Int64}(samples-window+1)
 	for i = window:samples
 		states[i-window+1] = (model[:predict](data[(i-window+1):i,:]) .+1)[end]
 	end
@@ -107,6 +108,9 @@ end
 function inithmm(ms::ModelSizes, ret::Array{Float64,2})
   nperiods=size(ret,1)
   samples =1
+  if nperiods == 1
+	  return inithmm(ms, ret', nperiods, samples)
+  end
   return inithmm(ms, ret, nperiods, samples)
 end
 
@@ -118,7 +122,8 @@ function inithmm_z(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, sampl
   mk.ret = mk.ret[1:nassets(ms),:,:]
   return mk, model
 end
-## Uses HMM and LHS to populate MKData for MSDDP
+
+""" Uses HMM and LHS to populate MKData for MSDDP """
 function inithmm(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples::Int64; pini_cond=false)
 	np.random[:seed](rand(0:4294967295))
   ## Train HMM with data
@@ -150,7 +155,7 @@ function inithmm(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples
     	r[t,:,k,:] = lhsnorm(μ, Σ, nscen(ms), rando=false)'
 		end
   end
-  r = exp(r)-1
+  r = exp.(r)-1
 
   dM = MKData(k_ini, P_K, p_s, r)
   return dM, model
@@ -183,7 +188,7 @@ function inithmm_ar(z::Array{Float64,2}, dF::ARData, ms::ModelSizes, nperiods::I
 				z_t = (z_tp1[s] - dF.a_z[1] - ϵ[nassets(ms)+1,s])/dF.b_z[1]
 				ρ = dF.a_r + dF.b_r*z_t + ϵ[1:nassets(ms),s]
 				# Transform ρ = ln(1+r) in return (r)
-				r[t,:,k,s] = exp(ρ)-1
+				r[t,:,k,s] = exp.(ρ)-1
 				# Discount risk free rate
 				r[t,:,k,s] -= dF.r_f
 			end
@@ -196,10 +201,10 @@ end
 function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes; seed = rand(0:4294967295))
 	np.random[:seed](seed)
 
-  model = train_hmm(ff, nstates(ms))
+  model = train_hmm(ff, nstates(ms)) #TODODONE remover ,[500,50,10]
 
-	# Use conditional probability
-	k_ini = (model[:predict](ff) .+1)[end] # conditional probability
+  # Use conditional probability
+  k_ini = (model[:predict](ff) .+1)[end] # conditional probability
 
   # Transition matrix (K_t x K_(t+1))
   P_K = model[:transmat_]
@@ -209,7 +214,7 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes; seed = 
 
   ## Use HMM for each state in LHS
   r = zeros(nstages(ms), nassets(ms), nstates(ms), nscen(ms))
-	samp_ϵ = Array(Float64,nassets(ms),nscen(ms))
+	samp_ϵ = Array{Float64}(nassets(ms),nscen(ms))
   for k = 1:nstates(ms)
 		μ = model[:means_][k,:]
     Σ = model[:covars_][k,:,:]
@@ -222,7 +227,7 @@ function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes; seed = 
 				ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
 
 				# Transform ρ = ln(1+r) in return (r)
-				r[t,:,k,s] = exp(ρ)-1
+				r[t,:,k,s] = exp.(ρ)-1
 			end
 		end
   end
@@ -234,7 +239,7 @@ function samplhmm(dSI::FFMData, ms::ModelSizes, model, n_scen::Int)
     np.random[:seed](rand(0:4294967295))
 
     r = zeros(nassets(ms), nstates(ms), n_scen)
-    samp_ϵ = Array(Float64,nassets(ms), n_scen)
+    samp_ϵ = Array{Float64}(nassets(ms), n_scen)
     for k = 1:nstates(ms)
         μ = model[:means_][k,:]
         Σ = model[:covars_][k,:,:]
@@ -245,7 +250,7 @@ function samplhmm(dSI::FFMData, ms::ModelSizes, model, n_scen::Int)
         for s = 1:n_scen
             ρ = dSI.α + (dSI.β'*z[:,s]) + vec(samp_ϵ[:,s])
             # Transform ρ = ln(1+r) in return (r)
-            r[:,k,s] = exp(ρ)-1
+            r[:,k,s] = exp.(ρ)-1
         end
 
     end

@@ -28,7 +28,7 @@ end
 # Split the z values using equal spaces
 function splitequaly(L::Int64, z::Array{Float64,2})
   slot = (maximum(z)-minimum(z))/L
-  z_l = Array(Float64, L)
+  z_l = Array{Float64}( L)
   z_l[1] = minimum(z)+slot/2
   for l = 2:L
     z_l[l] = z_l[l-1]+slot
@@ -40,13 +40,13 @@ end
 #Interpolate Q_t using z_t
 function samplestp1(dS::SDPData, dF::ARData, β::Array{Float64,1}, z_l::Array{Float64,1}, z_t::Float64)
   ϵ = lhsnorm(zeros(dS.N+1), dF.Σ, dS.S, rando=true)'
-  r_s = Array(Float64, dS.N, dS.S)
-  Q_s = Array(Float64, dS.S)
-  z_tp1 = Array(Float64, dS.S)
+  r_s = Array{Float64}(dS.N, dS.S)
+  Q_s = Array{Float64}(dS.S)
+  z_tp1 = Array{Float64}( dS.S)
   for s = 1:dS.S
     ρ =  dF.a_r +dF.b_r*z_t + ϵ[1:dS.N,s]
     # Transform ρ = ln(r) in return (r)
-    r_s[:,s] = exp(ρ)-1
+    r_s[:,s] = exp.(ρ)-1
     # Discount risk free rate
     r_s[:,s] -= dF.r_f
     z_tp1[s] = dF.a_z[1] +dF.b_z[1]*z_t + ϵ[dS.N+1,s]
@@ -79,7 +79,7 @@ function forward(dS::SDPData, dF::ARData, β::Array{Float64,2}, z_l::Array{Float
     rets_t::Array{Float64,2})
   W = 1.0
   p_s = ones(dS.S)*1/dS.S
-  all = Array(Float64,dS.N+1, dS.T-1)
+  all = Array{Float64}(dS.N+1, dS.T-1)
   for t = 1:dS.T-1
     Q_s, r_s = samplestp1(dS, dF, vec(β[t+1,:]), z_l, z_t[t])
     if t+1 == dS.T
@@ -121,7 +121,7 @@ end
 
 # Find the slot for each z_s
 function findslots(z_s::Array{Float64,1}, z_l::Array{Float64,1}, S::Int64, L::Int64)
-  slots = Array(Int64,S)
+  slots = Array{Int64}(S)
 
   for s = 1:S
     slots[s] = findslot(z_s[s], z_l, L )
@@ -132,7 +132,7 @@ end
 
 function backward(dF::ARData, dS::SDPData, z_l::Array{Float64,1})
   Q_l = ones(Float64, dS.L)
-  β = Array(Float64, dS.T, 3)
+  β = Array{Float64}( dS.T, 3)
   p_s = ones(dS.S)*1/dS.S
   for t = dS.T-1:-1:1
     info(" t = $t")

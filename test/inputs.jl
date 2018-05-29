@@ -64,7 +64,7 @@ using Distributions, Base.Test, CPLEX
     setnstates!(m, 3)
     mk, hmm = inithmm(m.sizes, ret)
 
-    order = Array(Int64, nstates(m))
+    order = Array{Int64}(nstates(m))
     found = true
     mm = mean(hmm[:means_],2)
     for k = 1:nstates(m)

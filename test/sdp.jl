@@ -21,7 +21,7 @@ using SDP, AR
     # Generate the series ρ and z
     se_ = series(dF, Sc, T_s)
     ρ = se_[1:N,:,:]
-    rets = exp(ρ)-1 -dF.r_f
+    rets = exp.(ρ)-1 -dF.r_f
     z = reshape(se_[N+1,:,:], T_s, Sc)
 
 
@@ -40,7 +40,7 @@ using SDP, AR
     # Run SDP
     Q_l = backward(dF, dS, z_l)
     ws = zeros(Float64, Sc)
-    all = Array(Float64, N+1,T-1, Sc)
+    all = Array{Float64}( N+1,T-1, Sc)
     for se = 1:Sc
       ws[se], all[:,:,se] = forward(dS, dF, Q_l, z_l, vec(z[:,se]), rets[:,:,se])
     end

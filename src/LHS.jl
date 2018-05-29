@@ -38,7 +38,7 @@ function lhsnorm(μ::Array{Float64,1}, Σ::Array{Float64,2}, n::Int64; rando=tru
   end
 
   for i=1:p
-      x[:,i] = quantile(Normal(μ[i],sqrt(Σ[i,i])),x[:,i])
+      x[:,i] = quantile.(Normal(μ[i],sqrt(Σ[i,i])),x[:,i])
   end
 
   return x
