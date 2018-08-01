@@ -9,7 +9,8 @@ using PyCall, Logging, Distributions
 warnings.filterwarnings("ignore", category=exceptions.DeprecationWarning)
 
 #HMM_MSDDP
-export train_hmm, score, predict, predictsw, inithmm, inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
+export train_hmm, score, predict, predict_state_sw, predict_probstate_sw, inithmm,
+	inithmm_z, inithmm_ar, inithmm_sim, inithmm_ffm, samplhmm
 #MSDDP
 export MKData, MAAParameters, SDDPParameters, ModelSizes, MSDDPModel
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, createmodels!, reset!
@@ -18,8 +19,11 @@ export setnstages!, setnstates!, setnassets!, setnscen!, setα!, setmarkov!, set
 export solve, simulate, simulatesw, simulate_stateprob, simulatestates, simulate_percport, reset!
 
 
-function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
+function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1},
 			μ::Array{Float64,1}, σ::Array{Float64,1}; cov_type="full",init_p="")
+	if N == 1
+		data = reshape(data,length(data),1) # Has to be Array{Float64,2}
+	end
 	μ_ = Array{Float64}(n_states,1)
 	μ_[:,:] = μ[1:n_states,:]
 	σ_ = Array{Float64}(n_states,1,1)
@@ -29,9 +33,7 @@ function train_hmm(data::Array{Float64,1}, n_states::Int64, lst::Array{Int64,1},
 	debug("σ_ ", σ_)
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,means_prior=μ_,covars_prior=σ_,
 		init_params=init_p)
-  data = ((data')') # Has to be Array{Float64,2}
-
-  model[:fit](data,lst)
+	model[:fit](data, lst)
 	debug("After")
 	debug("μ ", model[:means_])
 	debug("σ ", model[:covars_])
@@ -41,7 +43,7 @@ end
 function train_hmm{N}(data::Array{Float64,N}, n_states::Int64, lst::Array{Int64,1}; cov_type="full",init_p="stmc")
 	model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
   if N == 1
-  	data = (data')' # Has to be Array{Float64,2}
+  	data = reshape(data,length(data),1) # Has to be Array{Float64,2}
   end
   model[:fit](data,lst)
 	debug("After")
@@ -52,10 +54,10 @@ end
 
 function train_hmm{N}(data::Array{Float64,N}, n_states::Int64; cov_type="full",init_p="stmc")
   if N > 1
-    model = hl_hmm.GaussianHMM(n_components=n_states, covariance_type=cov_type,init_params=init_p)
+    model = hl_hmm.GaussianHMM(n_components=n_states)
   else
     model = hl_hmm.GaussianHMM(n_components=n_states)
-	data = (data')'  # Has to be Array{Float64,2}
+	data = reshape(data,length(data),1)  # Has to be Array{Float64,2}
   end
 	model[:fit](data)
 	debug("After")
@@ -66,7 +68,8 @@ end
 
 # Return the loglikelihood of the data
 function score(model, data::Array{Float64,1})
-  model[:score]((data')') # Has to be Array{Float64,2}
+	data = reshape(data,length(data),1) # Has to be Array{Float64,2}
+	model[:score](data)
 end
 
 function score(model, data::Array{Float64,2})
@@ -75,11 +78,13 @@ end
 
 # Return the loglikelihood of the data
 function score(model, data::Array{Float64,1}, lst::Array{Int64,1})
-  model[:score]((data')',lst) # Has to be Array{Float64,2}
+	data = reshape(data,length(data),1)
+	model[:score](data, lst) # Has to be Array{Float64,2}
 end
 
 function predict(model, data::Array{Float64,1})
-	predict(model,(data')')
+	data = reshape(data,length(data),1)
+	predict(model, data)
 end
 function predict(model, data::Array{Float64,2})
 	samples = size(data,1)
@@ -90,19 +95,37 @@ function predict(model, data::Array{Float64,2})
 	return states
 end
 
-""" Predict function using slide windows """
-function predictsw(model, data::Array{Float64,1}, window::Int64)
-	predictsw(model,(data')', window)
+""" Predict state function using slide windows """
+function predict_state_sw(model, data::Array{Float64,1}, window::Int64)
+	data = reshape(data,length(data),1)
+	predictsw(model, data, window)
 end
 
-""" Predict function using slide windows """
-function predictsw(model, data::Array{Float64,2}, window::Int64)
+""" Predict state using slide windows """
+function predict_state_sw(model, data::Array{Float64,2}, window::Int64)
 	samples = size(data,1)
 	states = Array{Int64}(samples-window+1)
 	for i = window:samples
 		states[i-window+1] = (model[:predict](data[(i-window+1):i,:]) .+1)[end]
 	end
 	return states
+end
+
+""" Predict state probability using slide windows """
+function predict_probstate_sw(model, data::Array{Float64,1}, window::Int64)
+	data = reshape(data,length(data),1)
+	predictsw(model, data, window)
+end
+
+""" Predict state probability using slide windows """
+function predict_probstate_sw(model, data::Array{Float64,2}, window::Int64)
+	nstates, = size(model[:transmat_])
+	samples = size(data,1)
+	statesprob = Array{Float64}(samples-window+1, nstates)
+	for i = window:samples
+		statesprob[i-window+1,:] = (model[:predict_proba](data[(i-window+1):i,:]) .+1)[end,:]
+	end
+	return statesprob
 end
 
 function inithmm(ms::ModelSizes, ret::Array{Float64,2})
@@ -201,7 +224,7 @@ end
 function inithmm_ffm(ff::Array{Float64,2}, dSI::FFMData, ms::ModelSizes; seed = rand(0:4294967295))
 	np.random[:seed](seed)
 
-  model = train_hmm(ff, nstates(ms)) #TODODONE remover ,[500,50,10]
+  model = train_hmm(ff, nstates(ms))
 
   # Use conditional probability
   k_ini = (model[:predict](ff) .+1)[end] # conditional probability
