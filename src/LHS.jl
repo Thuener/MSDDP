@@ -16,7 +16,7 @@ function lhsnorm(μ::Float64, σ::Float64, n::Int64; rando=true)
     x = (x - 0.5)/n
   end
 
-  x = quantile(Normal(μ,sqrt(σ)),x)
+  x = quantile.(Normal(μ,sqrt(σ)),x)
 
   return x
 end

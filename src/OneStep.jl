@@ -15,6 +15,7 @@ type OSData
   S::Int64
   α::Float64
   c::Float64
+  c_ori::Float64
   γ::Float64
   Mod::Bool
   x::Array{Float64,1}
@@ -25,6 +26,37 @@ type SubProbData
   cash::Int64
   assets::Array{Int64,1}
   risk::Int64
+end
+
+" Change the RHS using the index of the constraint "
+function chgrrhs(sp::JuMP.Model, idx::Int64, rhs::Number)
+    constr = sp.linconstr[idx]
+    if constr.lb != -Inf
+        if constr.ub != Inf
+            if constr.ub == constr.lb
+                sen = :(==)
+            else
+                sen = :range
+            end
+        else
+            sen = :(>=)
+        end
+    else #if constr.lb == -Inf
+        constr.ub == Inf && error("'Free' constraint sense not supported")
+        sen = :(<=)
+    end
+
+    if sen == :range
+        error("Modifying range constraints is currently unsupported.")
+    elseif sen == :(==)
+        constr.lb = float(rhs)
+        constr.ub = float(rhs)
+    elseif sen == :>=
+        constr.lb = float(rhs)
+    else
+        @assert sen == :<=
+        constr.ub = float(rhs)
+    end
 end
 
 function createmodel(dO::OSData, p::Array{Float64,1}, r::Array{Float64,2}, Q_tp1::Array{Float64,1}; LP=2)
@@ -45,7 +77,7 @@ function createmodel(dO::OSData, p::Array{Float64,1}, r::Array{Float64,2}, Q_tp1
   end
 
   risk =  @constraint(Q,-(z - sum(p[s]*y[s] for s = 1:dO.S)/(1-dO.α))
-                          + dO.c*sum(b[i] + d[i] for i = 1:dO.N) <= dO.γ*(sum(dO.x)+dO.x0)).idx
+                          + dO.c_ori*sum(b[i] + d[i] for i = 1:dO.N) <= dO.γ*(sum(dO.x)+dO.x0)).idx
 
   @constraint(Q, trunc[s = 1:dO.S], y[s] >= z - vecdot(r[:,s],u))
   sp = SubProbData( cash, assets, risk )
@@ -54,7 +86,7 @@ end
 
 
 function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, z_l::Array{Float64,1}, z_t::Array{Float64,1},
-    rets_t::Array{Float64,2})
+    rets_t::Array{Float64,2}; change_cost=false)
   x_trial = zeros(dO.N,dO.T)
   x0_trial = zeros(dO.T)
   x_trial[1:dO.N,1] = dO.x
@@ -66,13 +98,16 @@ function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, 
     if t+1 == dS.T || ~dO.Mod
       Q_s =  ones(Float64,dS.S)
     end
+    if change_cost
+      dO.c = dO.c_ori/min(6,12-t)
+    end
     H, subp = createmodel(dO, p_s, r_s, Q_s)
 
     # Change x
-    MSDDP.chgrrhs(H, subp.cash, x0_trial[t])
-    MSDDP.chgrrhs(H, subp.risk, dO.γ*(sum(x_trial[:,t])+x0_trial[t]) )
+    chgrrhs(H, subp.cash, x0_trial[t])
+    chgrrhs(H, subp.risk, dO.γ*(sum(x_trial[:,t])+x0_trial[t]) )
     for i = 1:dO.N
-      MSDDP.chgrrhs(H, subp.assets[i], x_trial[i,t])
+      chgrrhs(H, subp.assets[i], x_trial[i,t])
     end
 
     status = solve(H)
@@ -84,7 +119,14 @@ function forward(dO::OSData, dF::ARData, dS::SDP.SDPData, β::Array{Float64,2}, 
     for i = 1:dO.N
       x_trial[i,t+1] = (1+rets_t[i,t+1])*getvalue(u[i])
     end
-    x0_trial[t+1] = getvalue(getindex(H,:u0))
+    if change_cost
+      b_v = getvalue(getindex(H,:b))
+      d_v = getvalue(getindex(H,:d))
+      x0_trial[t+1] = - sum((1.0+dO.c_ori)*b_v) + sum((1.0-dO.c_ori)*d_v) + x0_trial[t]
+    else
+      x0_trial[t+1] = getvalue(getindex(H,:u0))
+    end
+
   end
   return x_trial, x0_trial
 end

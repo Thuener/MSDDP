@@ -15,8 +15,8 @@ end
 function evaluate(ret_indexes::Array{Float64,2}, ret_assets::Array{Float64,2})
   N = size(ret_assets,1)
   Sa = size(ret_indexes,2)
-  μ  = Array(Float64,N)
-  σ  = Array(Float64,N)
+  μ  = Array{Float64}(N)
+  σ  = Array{Float64}(N)
 
   X = [ones(1,Sa); ret_indexes];
   β = X'\ret_assets'

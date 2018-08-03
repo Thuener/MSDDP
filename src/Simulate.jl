@@ -1,6 +1,6 @@
 module Simulate
 
-using MSDDP, HMM_MSDDP, Util
+using MSDDP, HMM_MSDDP
 using Distributions
 using Logging
 
@@ -31,7 +31,7 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
     dFF = FFM.evaluate(lnret_train[1:F,:],lnret_train[F+1:end,:])
     dM, model = inithmm_ffm(lnret_train[1:F,:]', dFF, dH)
 
-    LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM;stabUB=0.05)
+    LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM;stabUB=0.05)
 
     info("Simulating $i of $its memuse $(memuse())")
     states = predict(model,lnret_test[1:F,:]')
@@ -40,7 +40,6 @@ function rollinghorizon(dH, series, nrows_train, F, R, output_dir, file_name; re
       all_x = hcat(all_x,vcat(x0[2:end]',x[:,2:end]))
     else
       dH.T = R+1
-      states = predict(model,lnret_test[1:F,:]')
       debug("States $(states)")
       x, x0, exp_ret = simulate(dH, dM, AQ, sp, ret_test[F+1:end,:], states; real_tc=real_tc)
       all_x = hcat(all_x,vcat(x0[2:end]',x[:,2:end]))
@@ -110,7 +109,7 @@ function runMSDDP_TD_TC_IN(dH, dM, series, states, max_T)
   NS = size(series,3)
   days = size(series,2)
 
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
   rets = Array(Float64, NS, days-1)
   for s = 1:NS
     x, x0 = simulatesw(dH, dM, AQ, sp, series[:,:,s], states[:,s])

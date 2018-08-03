@@ -508,7 +508,7 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
 
     status = JuMP.solve(jmodel)
     if status ≠ :Optimal
-        writeLP(jumpmodel(sp),"prob.lp")
+        writeLP(jmodel,"prob.lp";genericnames=false)
         error("Can't solve the problem status:",status)
     end
     m.stages[stage].subproblems[state] = Subproblem(jmodel, [cash; risk; assets], low(m))
@@ -542,7 +542,7 @@ function simulatestates(sz::ModelSizes, mk::MKData, states_forward::Vector{Int64
 end
 
 function forward!(model::AbstractMSDDPModel, states::Vector{Int64}, rets::Array{Float64,2};
-        nstag = nstages(msddp(model)), real_transcost=0.0)
+        nstag = nstages(msddp(model)), real_transcost=0.0, simulate=false)
     m = msddp(model)
 
     # Initialize
@@ -565,7 +565,7 @@ function forward!(model::AbstractMSDDPModel, states::Vector{Int64}, rets::Array{
         # Resolve subprob in time t
         status = solve(sp)
         if status ≠ :Optimal
-            writeLP(jumpmodel(sp),"prob.lp")
+            writeLP(jmodel,"prob.lp";genericnames=false)
             error("Can't solve the problem status:",status)
         end
         # Evalute immediate benefit
@@ -616,7 +616,7 @@ function backward!(model::AbstractMSDDPModel, state::State, cutsfile::String)
 
             status = solve(sp)
             if status ≠ :Optimal
-                writeLP(jumpmodel(sp),"prob.lp")
+                writeLP(jmodel,"prob.lp";genericnames=false)
                 error("Can't solve the problem status:",status)
             end
 
@@ -732,7 +732,7 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
             sp = subproblem(model, 1, inistate(markov(model)))
             status = solve(sp)
             if status ≠ :Optimal
-                writeLP(jumpmodel(sp),"prob.lp")
+                writeLP(jmodel,"prob.lp";genericnames=false)
                 error("Can't solve the problem status:",status)
             end
             upper = getobjectivevalue(sp)
@@ -903,7 +903,7 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
      rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
      states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
-     state, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward, real_transcost=real_transcost)
+     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward; real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
      all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
      inialloc!(mcopy, risk_alloc(state)[:,end], rf_alloc(state)[end])
@@ -915,7 +915,7 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
      states_forward_a = Array{Int64}(diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
-     state, expret, u = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost)
+     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
      all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
    end

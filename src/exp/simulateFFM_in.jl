@@ -42,7 +42,7 @@ function runMSDDP_TD_TC(dH, dM, series, states)
   info("#### SDDP with temporal dependecy and transactional costs ####")
   NS = size(series,3)
 
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
   rets = Array(Float64, NS, dH.T-1)
   for s = 1:NS
     x, x0, exp_ret = simulate(dH, dM, AQ, sp, series[:,:,s], states[:,s])
@@ -59,7 +59,7 @@ function runMSDDP_TD_NTC(dH, dM, series, states)
   c = dH.c
   dH.c = 0.0
 
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
 
   rets = Array(Float64, NS, dH.T-1)
   for s = 1:NS
@@ -81,7 +81,7 @@ function runMyopic_Inc_TC(dH, series, ret_inc)
 
   p_s = ones(dH.S, dH.K)*1.0/dH.S
   dM = MKData( ret_inc, p_s, 1, [1.0]' )
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
 
   rets = Array(Float64, NS, T_ini-1)
   for s = 1:NS
@@ -100,7 +100,7 @@ function runMSDDP_NTD_TC(dH, series, ret_inc)
 
   p_s = ones(dH.S, dH.K)*1.0/dH.S
   dM = MKData( ret_inc, p_s, 1, [1.0]')
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
 
   rets = Array(Float64, NS, dH.T-1)
   states = ones(Int64,dH.T)
@@ -122,7 +122,7 @@ function runMyopic_NTC(dH, dM, series, states)
   c = dH.c
   dH.c = 0.0
 
-  LB, UB, LB_c, AQ, sp, x_trial, u_trial = sddp(dH, dM)
+  LB, UB, LB_c, x_trial, u_trial = sddp(dH, dM)
 
   rets = Array(Float64, NS, T_ini-1)
   for s = 1:NS

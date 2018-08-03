@@ -3,29 +3,54 @@ using DataFrames, Gadfly
 println(ARGS)
 file = ARGS[1] # Name of the file to be processed
 single = parse(Bool,ARGS[2]) # if it is a single efficient frontier (true or false)
-
-table = readcsv("$(file)")
+if length(ARGS) < 3
+    table = readcsv("$(file)")[2:end,:]
+else
+    header = parse(Bool,ARGS[3]) # true or false to ignore header
+    if header
+        table = readcsv("$(file)")[2:end,:]
+    else
+        table = readcsv("$(file)")
+    end
+end
+K = floor(Int,(size(table,2) -2)/3)
 df2 = DataFrame()
 
-df2[Symbol("Trans. cost")] = vec(vcat(table[:,1],table[:,1],table[:,1]))
-df2[:γ] = vec(vcat(table[:,2],table[:,2],table[:,2]))
-df2[:OF] = vec(vcat(table[:,3],table[:,4],table[:,5]))
+N = size(table,1)  # Numer of lines on table.csv
+names = ["MSDDP","FBS","FCBS"]
 
-N = size(table,1) # Numer of lines on table.csv
-df2[:type] = vcat(fill("MSDDP",N),fill("One-Step",N),fill("One-Step M.",N))
-df2[:M] = vec(vcat((table[:,3]),(table[:,4]),(table[:,5])))
+tc    = []
+gamma = []
+of    = []
+ty    = []
+M     = []
+mmin  = []
+mmax  = []
+for i = 1:K
+    tc    = vcat(tc,    table[:,1])
+    gamma = vcat(gamma, table[:,2])
+    of    = vcat(of,    table[:,i+2])
 
-df2[:Mmin] = vec(vcat((table[:,6]),(table[:,7]),(table[:,8])))
-df2[:Mmax] = vec(vcat((table[:,9]),(table[:,10]),(table[:,11])))
+    ty = vcat(ty, fill(names[i],N))
+    mmin = vcat(mmin, table[:,i+2+K])
+    mmax = vcat(mmax, table[:,i+2+2*K])
+end
 
-myplot =0
+df2[Symbol("Trans. cost")] = tc
+df2[:γ]    = gamma
+df2[:OF]   = of
+df2[:type] = ty
+df2[:Mmin] = mmin
+df2[:Mmax] = mmax
+
+myplot = []
 if !single
   coord = Coord.cartesian(ymin=0.000, ymax=0.151)
-  myplot =  plot(df2,ygroup="type",x="γ",y="M", ymin="Mmin", ymax="Mmax",color="Trans. cost",Geom.subplot_grid(coord,Geom.line,Geom.errorbar)
-          ,Scale.color_discrete(),Guide.ylabel("Expected return (in 12 months)"),Theme(line_width=2px,grid_line_width=2px))
+  myplot =  plot(df2,ygroup="type",x="γ",y="OF", ymin="Mmin", ymax="Mmax",color="Trans. cost",Geom.subplot_grid(coord,Geom.line,Geom.errorbar)
+          ,Scale.color_discrete_manual("lightgray","gray","black"),Guide.ylabel("Expected return (in 12 months)"),Theme(line_width=2px,grid_line_width=2px))
   draw(SVG("effron.svg", 9inch, 9inch), myplot) # paper
 else
-  myplot =  plot(df2,x="γ",y="M", ymin="Mmin", ymax="Mmax",color="type",Guide.colorkey(""),Geom.line,Geom.errorbar
-            ,Scale.color_discrete(),Guide.ylabel("Expected return (in 12 months)"),Theme(line_width=2px,grid_line_width=2px))
+  myplot =  plot(df2,x="γ",y="OF", ymin="Mmin", ymax="Mmax",color="type",Guide.colorkey(""),Geom.line,Geom.errorbar
+            ,Scale.color_discrete_manual("lightgray","gray","black"),Guide.ylabel("Expected return (in 12 months)"),Theme(line_width=2px,grid_line_width=2px))
   draw(SVG("singleeffron.svg", 9inch, 6inch), myplot) # paper
 end

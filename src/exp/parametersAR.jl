@@ -24,7 +24,7 @@ maxvl = 9999999
 samplower = 300
 samplower_inc = 100
 nit_before_lower = 100
-gap = 0.05
+gap = 1.
 max_it = 15
 α_lower = 0.9
 

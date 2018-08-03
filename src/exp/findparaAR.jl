@@ -21,7 +21,7 @@ function sampleslhs_stabUB(dH::MSDDPData, ln_ret::Array{Float64,3}, T_l::Int64, 
       dM.r = dM.r[1:dH.N,:,:] # removing the state z
 
       info("Train SDDP with $s LHS samples")
-      @time LB, UB, LB_c, AQ, sp, x_trial, u_trial, LB_c = sddp(dH, dM)
+      @time LB, UB, LB_c, x_trial, u_trial, LB_c = sddp(dH, dM)
       UBs[it] = UB
     end
     curr_std = sqrt(var(UBs))
@@ -62,7 +62,7 @@ function bestsamples_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData
     dM, model, y = inithmm_ar(z, dF, dH, T_l, Sc)
 
     info("Train SDDP with $(dH.S) samples")
-    @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+    @time LB, UB, LB_c = sddp(dH, dM)
     UBs[i] = UB
 
     #Simulate
@@ -212,7 +212,7 @@ function beststate_ttest(output_dir::AbstractString, dH::MSDDPData, dF::ARData, 
     dM, model, y = inithmm_ar(ln_ret, dF, dH, T_l, Sc)
 
     info("Train SDDP with $k states")
-    @time LB, UB, LB_c, AQ, sp = sddp(dH, dM)
+    @time LB, UB, LB_c = sddp(dH, dM)
     UBs[k] = UB
 
     #Simulate

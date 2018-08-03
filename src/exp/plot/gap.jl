@@ -18,14 +18,20 @@ df[:lLB] = LB[2:end,1]- 	q* LB[2:end,2]
 df[:UB] = UB[2:end]
 df[:It] = collect(1:size(UB,1)-1)*5
 
+function lowlight_color_aux(fill_color)
+    Gadfly.RGBA(0.5,0.5,0.5,.53)
+end
+
 dash = 0.3 * Compose.cm
-l1=layer(df, x=:It,y=:UB,Geom.line, Theme(default_color=colorant"red",line_style=[dash]))
-l2=layer(df, x=:It, y=:LB, ymin=:lLB, ymax=:uLB, Geom.line, Geom.ribbon)
+l1=layer(df, x=:It,y=:UB,Geom.line, Theme(default_color=colorant"black",line_style=[dash]))
+l2=layer(df, x=:It, y=:LB, ymin=:lLB, ymax=:uLB, Geom.line, Geom.ribbon,
+    Theme(default_color=colorant"lightgray",
+    lowlight_color= lowlight_color_aux ))
 
 #coord = Coord.cartesian(xmin=1, xmax=size(UB,1)-1)
 p = plot(l1,l2, #coord,
   Guide.ylabel("Objective value"),Guide.xticks(ticks=collect(5:5:maximum(df[:It]))),Guide.xlabel("MSDDP iteration(added cuts)"),
   Theme(line_width=2px,grid_line_width=1px),
-  Guide.manual_color_key("",["UB","LB"], ["red", "deepskyblue"]))
+  Guide.manual_color_key("",["UB","LB"], ["black", "lightgray"]))
 
 draw(SVG("gap_convergence.svg", 16cm, 10cm), p)

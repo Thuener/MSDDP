@@ -9,7 +9,7 @@ function runMSDDP(dH, dM, Sc, rets_, states, ret_p)
   ############ MSDDP ###########
   info("#### MSDDP ####")
   info("Training MSDDP...")
-  @time LB, UB, LB_c, AQ, sp, = sddp(dH, dM;stabUB=0.05)
+  @time LB, UB, LB_c, = sddp(dH, dM;stabUB=0.05)
 
   info("Simulating MSDDP...")
   for se = 1:Sc
