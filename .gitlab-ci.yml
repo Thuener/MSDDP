@@ -9,16 +9,16 @@ setup_job:
     - master
   script:
     - pip install -U --user numpy scipy scikit-learn hmmlearn
-    - echo 'push!(LOAD_PATH, "/home/gitlab-runner/.julia/v0.5/MSDDP/src")' > ~/.juliarc.jl
+    - echo 'push!(LOAD_PATH, "/home/gitlab-runner/JuliaPro-0.6.2.1/JuliaPro/pkgs-0.6.2.1/v0.6/MSDDP/src")' > ~/.juliarc.jl
 
 .test_template: &test_definition
   stage: test
   only:
     - master
   script:
-    - /usr/bin/julia -e 'Pkg.clone(pwd()); Pkg.test("MSDDP",
+    - /usr/bin/julia6 -e 'Pkg.clone(pwd()); Pkg.test("MSDDP",
       coverage = true)'
-    - /usr/bin/julia -e 'Pkg.add("Coverage"); cd(Pkg.dir("MSDDP"));
+    - /usr/bin/julia6 -e 'Pkg.add("Coverage"); cd(Pkg.dir("MSDDP"));
       using Coverage; cl, tl = get_summary(process_folder());
       println("(", cl/tl*100, "%) covered")'
 
@@ -27,10 +27,10 @@ clean_job:
   only:
     - master
   script:
-    - /usr/bin/julia -e 'Pkg.rm("MSDDP")';
+    - /usr/bin/julia6 -e 'Pkg.rm("MSDDP")';
   when: always
 
 # Name a test and select an appropriate image.
-test:0.5.2:
-  image: julia
+test:0.6:
+  image: julia6
   <<: *test_definition
