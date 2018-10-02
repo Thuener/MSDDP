@@ -105,6 +105,7 @@ type MSDDPModel <: AbstractMSDDPModel
     param::SDDPParameters
     markov_data::MKData
     stages::Vector{Stage}
+    states::Vector{State}
     low::Bool
 end
 
@@ -132,7 +133,7 @@ function checkstab(newub::Float64, lastub::Float64, param::SDDPParameters)
 end
 
 MSDDPModel(sizes, asset_parameters, param, markov_data, lpsolver, stages) =
-    MSDDPModel(sizes, asset_parameters, param, markov_data, lpsolver, stages, true)
+    MSDDPModel(sizes, asset_parameters, param, markov_data, lpsolver, stages, [], true)
 
 " Construct the MSDDPModel without ModelSizes "
 function MSDDPModel(asset_parameters::MAAParameters,
@@ -159,7 +160,7 @@ function MSDDPModel(msize::ModelSizes,
     for t = 1:nstages(msize)
         stages[t] = Stage(Vector{AbstractSubproblem}(nstates(msize)))
     end
-    m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, low)
+    m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, [], low)
     createmodels!(m)
     return m
 end
@@ -171,6 +172,7 @@ function reset!(m::MSDDPModel)
         stages[t] = Stage(Vector{AbstractSubproblem}(nstates(m)))
     end
     m.stages = stages
+    m.states = []
     createmodels!(m)
     nothing
 end
@@ -589,7 +591,9 @@ function forward!(model::AbstractMSDDPModel, states::Vector{Int64}, rets::Array{
         end
     end
 
-    return State(x_trial, x0_trial), obj_forward, u_trial
+    st = State(x_trial, x0_trial)
+    push!(model.states, st)
+    return st, obj_forward, u_trial
 end
 
 function backward!(model::AbstractMSDDPModel, state::State, cutsfile::String)
@@ -694,14 +698,14 @@ function isconverged(model::AbstractMSDDPModel, p::SDDPParameters, upper::Float6
 
     rets_forward = zeros(Float64, nassets(model), nstages(model))
     states_forward = Array{Int64}( nstages(model))
-    lower = (p.parallel ? SharedArray{Float64}(p.samplower):
+    lowers = (p.parallel ? SharedArray{Float64}(p.samplower):
                 Array{Float64}(p.samplower))
 
     forwards_lower = 0 # number of forwards to evaluate lower bound
     for forwards_lower = 1:p.samplower
         simulatestates!(states_forward, rets_forward, model)
         state, obj_forward, u_trial = forward!(model, states_forward, rets_forward)
-        lower[forwards_lower] = obj_forward
+        lowers[forwards_lower] = obj_forward
         sumlower += obj_forward
 
         if p.fast_lower
@@ -711,11 +715,11 @@ function isconverged(model::AbstractMSDDPModel, p::SDDPParameters, upper::Float6
                 gap_mean = 100*(upper - meanlower)/upper
                 if gap_mean > p.gap*3 && it_stable < 10
                     meanlower = sumlower/forwards_lower
-                    lower_conserv = (meanlower - quantil * std(lower[1:forwards_lower])/sqrt(forwards_lower))
+                    lower_conserv = (meanlower - quantil * std(lowers[1:forwards_lower])/sqrt(forwards_lower))
                     gap = 100*(upper - lower_conserv)/upper
                     info("gap_mean $gap_mean is higher than $(p.gap*3) using $forwards_lower Forwards. "*
                         "Aborting lower evaluation.")
-                    return false, lower[1:forwards_lower], gap
+                    return false, lowers[1:forwards_lower], lower_conserv, gap
                 # If the gap_mean is lower then p.gap( the gap is almost close)
                 # doubles the number of scenarios used in lower
                 elseif doub_samplower == false && gap_mean < p.gap
@@ -727,32 +731,32 @@ function isconverged(model::AbstractMSDDPModel, p::SDDPParameters, upper::Float6
             # Start testing gap after samplower_ini simulations
             if forwards_lower >= samplower_ini
                 meanlower = sumlower/forwards_lower
-                lower_conserv = (meanlower - quantil * std(lower[1:forwards_lower])/sqrt(forwards_lower))
+                lower_conserv = (meanlower - quantil * std(lowers[1:forwards_lower])/sqrt(forwards_lower))
                 gap = 100*(upper - lower_conserv)/upper
                 if abs(gap) < p.gap
                     info("SDDP ended: gap lower $gap is lower than $(p.gap) using $forwards_lower Forwards")
-                    return true, lower[1:forwards_lower], gap
+                    return true, lowers[1:forwards_lower], lower_conserv, gap
                 end
 
                 gap_mean = 100*(upper - meanlower)/upper
                 if gap_mean > p.gap && it_stable < 10
                     info("gap_mean $gap_mean is higher than $(p.gap) upper using $forwards_lower Forwards. "*
                         " Aborting lower evaluation.")
-                    return false, lower[1:forwards_lower], gap
+                    return false, lowers[1:forwards_lower], lower_conserv, gap
                 end
             end
         else
             # Evaluate the lower bound always using samples for lower bound forwards
             meanlower = sumlower/forwards_lower
-            lower_conserv = (meanlower - quantil * std(lower[1:forwards_lower])/sqrt(forwards_lower))
+            lower_conserv = (meanlower - quantil * std(lowers[1:forwards_lower])/sqrt(forwards_lower))
             gap = 100*(upper - lower_conserv)/upper
             if abs(gap) < p.gap
                 info("SDDP ended: gap lower $gap is lower than $(p.gap) using $forwards_lower Forwards")
-                return true, lower[1:forwards_lower], gap
+                return true, lowers[1:forwards_lower], lower_conserv, gap
             end
         end
     end
-    return false, lower[1:forwards_lower], gap
+    return false, lowers[1:forwards_lower], lower_conserv, gap
 end
 
 function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = "", timelimit=Inf)
@@ -779,7 +783,7 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
     upper_last     = 9999999.0
     lower_conserv  = 0.0
     eps_upper      = 1e-6
-    lower = []
+    lowers = []
 
     timeini = time()
     while abs(gap) > p.gap && upper > eps_upper && it < p.max_iterations && (time() - timeini) < timelimit
@@ -829,19 +833,19 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
         end
 
         # Test convergence
-        isconv, lower, gap = isconverged(model, p, upper, samplower_ini, it_stable)
+        isconv, lowers, lower_conserv, gap = isconverged(model, p, upper, samplower_ini, it_stable)
 
         if p.file != ""
-            save(string(p.file,"_MSDDP.jld"),"lower", lower,"upper", upper,"lower_c", lower_conserv,"x",
+            save(string(p.file,"_MSDDP.jld"),"lowers", lowers,"upper", upper,"lower_c", lower_conserv,"x",
             vcat(rf_alloc(state)',risk_alloc(state)), "u", u_trial, "l_lower", list_lowers, "l_upper", list_uppers,
             "l_firsu",list_firstu)
         end
 
         list_uppers = vcat(list_uppers,upper)
-        list_lowers = vcat(list_lowers,[mean(lower) std(lower)/sqrt(length(lower))])
+        list_lowers = vcat(list_lowers,[mean(lowers) std(lowers)/sqrt(length(lowers))])
 
         time_it = toq()
-        info("lower bound conservative = $lower_conserv, upper bound = $upper, gap(%) = $gap, time it: $time_it")
+        info("lower bound = $lower_conserv, upper bound = $upper, gap(%) = $gap, time it: $time_it")
         if isconv
             break
         end
@@ -857,8 +861,8 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
     end
 
     p.samplower = samplower_ini
-    x_trial_  = length(lower) != 0 ? vcat(rf_alloc(state)',risk_alloc(state)) : rf_alloc(state)'
-    return lower, upper, lower_conserv, x_trial_, u_trial, list_lowers, list_uppers, list_firstu
+    x_trial_  = length(lowers) != 0 ? vcat(rf_alloc(state)',risk_alloc(state)) : rf_alloc(state)'
+    return lowers, upper, lower_conserv, x_trial_, u_trial, list_lowers, list_uppers, list_firstu
 end
 
 function simulate_stateprob(model::AbstractMSDDPModel, rets::Array{Float64,2}, probret_state::Array{Float64,2}; real_transcost=0.0)
