@@ -822,6 +822,7 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
                             p.samplower = round(Int64,p.samplower + p.samplower_inc)
                             info("Stable upper bound, increasing samples for lower bound for $(p.samplower)")
                         end
+                        upper_last = upper
                         break
                     end
                 else
