@@ -689,7 +689,7 @@ end
 function isconverged(model::AbstractMSDDPModel, p::SDDPParameters, upper::Float64,
         samplower_ini::Int, it_stable::Int)
 
-    debug("Evaluating the Lower Bound memuse $(memuse())")
+    debug("Evaluating statistical the Lower Bound memuse $(memuse())")
     lower_conserv = 0.
     gap = 100.
     sumlower =0.
@@ -775,15 +775,15 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
     it = 0
     samplower_ini = p.samplower
 
-    list_firstu = inialloc(model)
-    list_uppers = [-1000]
-    list_lowers = [-1000 -1000]
+    list_firstu    = inialloc(model)
+    list_uppers    = [-1000]
+    list_lowers    = [-1000 -1000]
     upper          = 9999999.0
     it_stable      = 0
     upper_last     = 9999999.0
     lower_conserv  = 0.0
     eps_upper      = 1e-6
-    lowers = []
+    lowers         = []
 
     timeini = time()
     while abs(gap) > p.gap && upper > eps_upper && it < p.max_iterations && (time() - timeini) < timelimit
@@ -813,7 +813,8 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
 
             list_firstu = hcat(list_firstu,vcat(u0,u))
 
-            debug("obj forward = $obj_forward, upper bound = $upper, stab upper $(abs(upper/upper_last -1)*100)")
+            debug("obj forward = $(@sprintf("%.6f", obj_forward)), upper bound = $(@sprintf("%.6f", upper)),"*
+                "stab upper $(@sprintf("%.6f", abs(upper/upper_last -1)*100))")
             if p.fast_lower
                 if (checkstab(upper, upper_last, p) || upper < eps_upper || isnan(abs(upper/upper_last -1)*100))
                     it_stable += 1
@@ -846,7 +847,8 @@ function solve(model::AbstractMSDDPModel, p::SDDPParameters; cutsfile::String = 
         list_lowers = vcat(list_lowers,[mean(lowers) std(lowers)/sqrt(length(lowers))])
 
         time_it = toq()
-        info("lower bound = $lower_conserv, upper bound = $upper, gap(%) = $gap, time it: $time_it")
+        info("lower bound = $(@sprintf("%.6f", lower_conserv)), upper bound = $(@sprintf("%.6f", upper)),"*
+            "gap(%) = $(@sprintf("%.4f", gap)), it: $it time it: $(@sprintf("%.4f", time_it))")
         if isconv
             break
         end
@@ -879,7 +881,8 @@ end
 function simulate(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
   samps = size(rets,2)
   if samps != nstages(model)
-    error("Return series has to have $(nstages(model)) and has $(nsamp) samples, use simulatesw if you want to really do that.")
+    error("Return series has to have $(nstages(model)) and has $(nsamp) samples, u"*
+        "se simulatesw if you want to really do that.")
   end
   state, exp_ret, u = MSDDP.forward!(model, states, rets, real_transcost=real_transcost)
 
@@ -898,7 +901,8 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
      rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
      states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
 
-     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward; real_transcost=real_transcost, simulate=true)
+     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward;
+        real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
      all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
      inialloc!(mcopy, risk_alloc(state)[:,end], rf_alloc(state)[end])
@@ -910,7 +914,8 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
      states_forward_a = Array{Int64}(diff_t)
      rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
      states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
-     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a; nstag=diff_t +1, real_transcost=real_transcost, simulate=true)
+     state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a;
+        nstag=diff_t +1, real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
      all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
    end
