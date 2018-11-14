@@ -890,7 +890,8 @@ function simulate(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Arr
 end
 
 # Simulate using sliding windows
-function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1}; real_transcost=0.0)
+function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1};
+    real_transcost=0.0, reestimate=false)
    mcopy = deepcopy(model)
    stages_test = size(rets,2)
    nstag = nstages(model)
@@ -900,6 +901,11 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
    for i = 1:its
      rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
      states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
+
+     if reestimate
+         setinistate!(markov(model), states_forward_a[1])
+         solve(model, param(model))
+     end
 
      state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward;
         real_transcost=real_transcost, simulate=true)
