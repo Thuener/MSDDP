@@ -138,15 +138,7 @@ function inithmm_z(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, sampl
   return mk, model
 end
 
-function createmk(ms::ModelSizes, ret::Array{Float64,2}, hmm_model, pini_cond)
-  # Use conditional probability or unconditional probability
-  k_ini = (hmm_model[:predict](ret) .+1)[end] # conditional probability
-  if !pini_cond
-    # The high initial probabilities as the first state
-    prob_ini = hmm_model[:startprob_] # unconditional probability
-    max_prob, k_ini = findmax(prob_ini)
-  end
-
+function createmk(hmm_model, ms::ModelSizes, ret::Array{Float64,2}, k_ini::Int64)
   # Transition matrix (K_t x K_(t+1))
   P_K = hmm_model[:transmat_]
 
@@ -175,7 +167,25 @@ function inithmm(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples
   lst = fill(nperiods, samples)
   model = train_hmm(ret, nstates(ms), lst)
 
-  dM = createmk(ms, ret, model, pini_cond)
+  # Use conditional probability or unconditional probability
+  k_ini = (model[:predict](ret) .+1)[end] # conditional probability
+  if !pini_cond
+    # The high initial probabilities as the first state
+    prob_ini = model[:startprob_] # unconditional probability
+    max_prob, k_ini = findmax(prob_ini)
+  end
+
+  dM = createmk(model, ms, ret, k_ini)
+  return dM, model
+end
+
+function inithmm(ms::ModelSizes, ret::Array{Float64,2}, nperiods::Int64, samples::Int64, k_init::Int64)
+  np.random[:seed](rand(0:4294967295))
+  ## Train HMM with data
+  lst = fill(nperiods, samples)
+  model = train_hmm(ret, nstates(ms), lst)
+
+  dM = createmk(model, ms, ret, k_init)
   return dM, model
 end
 
