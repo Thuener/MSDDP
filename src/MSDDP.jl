@@ -79,7 +79,7 @@ type SDDPParameters
     max_iterations::Int64           # Max interations of SDDP
     samplower::Int64                # Number of samples used in lower bound evaluation
     samplower_inc::Int64            # Number of samples to increment lower bound when stable
-    nit_before_lower::Int64         # Number of fowards and backwards before evaluate lower bound
+    nit_before_lower::Int64         # Number of forwards and backwards before evaluate lower bound
     gap::Float64                    # Minimum percentage gap between the lower and upper bounds (%)
     α_lower::Float64                # Confidence level for the lower bound
     diff_upper::Float64             # Difference in the upper bound to define stabilization
@@ -891,35 +891,46 @@ end
 
 # Simulate using sliding windows
 function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1};
-    real_transcost=0.0, reestimate=false)
+    real_transcost=0.0, nstag = nstages(model), reestimate=false, checkgapbefore=false)
    mcopy = deepcopy(model)
    stages_test = size(rets,2)
-   nstag = nstages(model)
-   its=floor(Int,(stages_test-1)/(nstages(model)-1))
+   its=floor(Int,(stages_test-1)/(nstag-1))
 
    all_x0, all_x = inialloct(mcopy)
    for i = 1:its
-     rets_forward     = rets[:,(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
-     states_forward_a = states[(i-1)*(nstages(mcopy)-1)+1:(i)*(nstages(mcopy)-1)+1]
+     indranges        = (i-1)*(nstag-1)+1:(i)*(nstag-1)+1
+     rets_forward     = rets[:,indranges]
+     states_forward_a = states[indranges]
 
      if reestimate
-         setinistate!(markov(model), states_forward_a[1])
-         solve(model, param(model))
+         debug("Reestimating SDDP, set state to $(states_forward_a[1]). It $(i) of $(its)")
+         setinistate!(markov(mcopy), states_forward_a[1])
+         if checkgapbefore
+             # Test convergence
+             isconv, lowers, lower_conserv, gap = isconverged(mcopy,
+                param(mcopy), 0.0, param(mcopy).samplower, 0)
+
+             # If din't converge go to solve
+             !isconv && solve(mcopy, param(mcopy))
+         else
+             solve(mcopy, param(mcopy))
+         end
      end
 
      state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward;
-        real_transcost=real_transcost, simulate=true)
+        nstag=nstag, real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
      all_x0 = vcat(all_x0, rf_alloc(state)[2:end])
      inialloc!(mcopy, risk_alloc(state)[:,end], rf_alloc(state)[end])
    end
 
    # Simulate last periods
-   diff_t = round(Int, stages_test-1 - (its*(nstages(mcopy)-1)))
+   diff_t = round(Int, stages_test-1 - (its*(nstag-1)))
    if diff_t > 0
      states_forward_a = Array{Int64}(diff_t)
-     rets_forward_a   = rets[:,its*(nstages(mcopy)-1)+1:end]
-     states_forward_a = states[its*(nstages(mcopy)-1)+1:end]
+     startind         = its*(nstag-1)+1
+     rets_forward_a   = rets[:,startind:end]
+     states_forward_a = states[startind:end]
      state, = MSDDP.forward!(mcopy, states_forward_a, rets_forward_a;
         nstag=diff_t +1, real_transcost=real_transcost, simulate=true)
      all_x = hcat(all_x, risk_alloc(state)[:,2:end])
@@ -927,7 +938,7 @@ function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::A
    end
 
    return all_x, all_x0
- end
+end
 
 function simulate_percport(model::AbstractMSDDPModel, rets::Array{Float64,2}, x_p::Array{Float64,1})
    stages_test = size(rets,2)
