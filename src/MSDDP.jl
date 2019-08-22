@@ -36,6 +36,21 @@ type Subproblem <: AbstractSubproblem
     # Ids for the constraints
     cons::Vector{Int64}
     low::Bool # use low level api
+    dic::Dict
+end
+
+function Subproblem(jmodel, cons, low)
+    return Subproblem(jmodel, cons, low, Dict())
+end
+
+function Base.copy(sp::Subproblem)
+    jmodel = copy(sp.jmodel)
+    cons   = deepcopy(sp.cons)
+    low    = copy(sp.low)
+    dic    = deepcopy(sp.dic)
+
+    new_sb = Subproblem(jmodel, cons, low, dic)
+    return new_sb
 end
 
 type Stage
@@ -163,6 +178,34 @@ function MSDDPModel(msize::ModelSizes,
     m = MSDDPModel(msize, lpsolver, asset_parameters, param, markov_data, stages, [], low)
     createmodels!(m)
     return m
+end
+
+" Copy stages vector "
+function copy_stages(msize::ModelSizes, stages::Vector{Stage})
+    new_stages = Vector{Stage}(nstages(msize))
+    for t = 1:nstages(msize)
+        new_stages[t] = Stage(Vector{AbstractSubproblem}(nstates(msize)))
+    end
+
+    for t = 1:nstages(msize)-1, j = 1:nstates(msize)
+        new_stages[t].subproblems[j] = copy(stages[t].subproblems[j])
+    end
+
+    return new_stages
+end
+
+function Base.copy(model::MSDDPModel)
+    sizes    = deepcopy(model.sizes)
+    lpsolver = deepcopy(model.lpsolver)
+    asset_pr = deepcopy(model.asset_parameters)
+    param    = deepcopy(model.param)
+    mar_data = deepcopy(model.markov_data)
+    stages   = copy_stages(sizes, model.stages)
+    states   = deepcopy(model.states)
+    low      = copy(model.low)
+
+    new_model = MSDDPModel(sizes, lpsolver, asset_pr, param, mar_data, stages, states, low)
+    return new_model
 end
 
 " Reset the stages vector inside MSDDPModel and create models"
@@ -501,10 +544,10 @@ function createmodel!(m::MSDDPModel, stage::Int, state::Int)
     risk =  @constraint(jmodel,-(z - sum(probstates[k]*probscen(markov(m), s, k)*y[k, s] for k = 1:nstates(m), s = 1:nscen(m))/(1-ap.α))
                           + transcost(m)*sum(b[i] + d[i] for i = 1:nassets(m)) <= ap.γ*initwealth(m)).idx
 
-    @constraint(jmodel, trunc[k = 1:nstates(m), s = 1:nscen(m)], y[k,s] >= z - sum(rets[i,k,s]*u[i] for i = 1:nassets(m)))
+    @constraint(jmodel, [k = 1:nstates(m), s = 1:nscen(m)], y[k,s] >= z - sum(rets[i,k,s]*u[i] for i = 1:nassets(m)))
 
     if stage == nstages(m)-1
-        @constraint(jmodel, bound_cuts[k = 1:nstates(m), s = 1:nscen(m)], θ[k,s] ==  0)
+        @constraint(jmodel, [k = 1:nstates(m), s = 1:nscen(m)], θ[k,s] ==  0)
     end
 
     status = JuMP.solve(jmodel)
@@ -892,7 +935,7 @@ end
 # Simulate using sliding windows
 function simulatesw(model::AbstractMSDDPModel, rets::Array{Float64,2}, states::Array{Int64,1};
     real_transcost=0.0, nstag = nstages(model), reestimate=false, checkgapbefore=false)
-   mcopy = deepcopy(model)
+   mcopy = copy(model)
    stages_test = size(rets,2)
    its=floor(Int,(stages_test-1)/(nstag-1))
 
